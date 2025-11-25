@@ -57,6 +57,18 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        success: "hsl(var(--badge-success))",
+        warning: "hsl(var(--badge-warning))",
+        info: "hsl(var(--badge-info))",
+        error: "hsl(var(--badge-error))",
+      },
+      fontFamily: {
+        sans: ['IBM Plex Sans', 'system-ui', 'sans-serif'],
+      },
+      boxShadow: {
+        sm: 'var(--shadow-sm)',
+        md: 'var(--shadow-md)',
+        lg: 'var(--shadow-lg)',
       },
       borderRadius: {
         lg: "var(--radius)",
