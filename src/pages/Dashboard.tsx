@@ -2,7 +2,7 @@ import { KPICard } from "@/components/dashboard/KPICard";
 import { QuickActions } from "@/components/dashboard/QuickActions";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { ApplicationsChart } from "@/components/dashboard/ApplicationsChart";
-import { Users, FileText, CheckCircle2, Clock, DollarSign, Building } from "lucide-react";
+import { Users, FileText, CheckCircle2, Clock, IndianRupee, Building } from "lucide-react";
 
 const Dashboard = () => {
   return (
@@ -10,9 +10,8 @@ const Dashboard = () => {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">
-          Welcome to Council of Architecture ERP System
-        </p>
+        
+    
       </div>
 
       {/* KPI Cards */}
@@ -50,11 +49,11 @@ const Dashboard = () => {
           iconColor="text-warning"
         />
         <KPICard
-          title="Revenue (This Month)"
+          title="Payments Processed (This Month)"
           value="₹18.5L"
           change="+15% growth"
           changeType="positive"
-          icon={DollarSign}
+          icon={IndianRupee}
           iconColor="text-success"
         />
         <KPICard

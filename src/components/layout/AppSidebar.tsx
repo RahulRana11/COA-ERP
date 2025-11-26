@@ -24,13 +24,15 @@ import {
   Briefcase,
   GraduationCap,
   Calendar,
-  DollarSign,
+  IndianRupee,
   BookOpen,
   BarChart3,
   Wrench,
   ChevronDown,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import coaLogo from "@/lib/Council_of_Architecture_logo.jpg";
 
 interface SubModule {
   title: string;
@@ -54,13 +56,19 @@ const modules: Module[] = [
     ],
   },
   {
-    title: "Registration & Identity",
+    title: "Architects",
     icon: UserCheck,
     submodules: [
-      { title: "Architect Registry", url: "/registry/architects" },
+      { title: "Registration", url: "/registry/registration" },
+      { title: "Renewal", url: "/registry/renewal" },
+      { title: "Defaulters ", url: "/registry/defaulters" },
+      { title: "Inactive Architects", url: "/registry/inactive" },
+      { title: "Print Certificate", url: "/registry/print-certificate" },
+      { title: "Inactivate Record", url: "/registry/inactivate-record" },
+      { title: "Search Architects", url: "/registry/search" },
       { title: "Credential Verification", url: "/registry/verification" },
       { title: "Empanelment", url: "/registry/empanelment" },
-      { title: "Member Records", url: "/registry/members" },
+      { title: "Architect Records", url: "/registry/architect" },
     ],
   },
   {
@@ -101,7 +109,7 @@ const modules: Module[] = [
   },
   {
     title: "Finance & Payments",
-    icon: DollarSign,
+    icon: IndianRupee,
     submodules: [
       { title: "Receipts & Transactions", url: "/finance/receipts" },
       { title: "Accounting", url: "/finance/accounting" },
@@ -152,91 +160,107 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarContent className="px-2 py-4">
-        {/* Logo Section */}
-        <div className="mb-6 px-3">
-          {!collapsed ? (
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-sidebar-primary flex items-center justify-center">
-                <Shield className="h-6 w-6 text-sidebar-primary-foreground" />
+        <TooltipProvider delayDuration={0}>
+          {/* Logo Section */}
+          <div className={`mb-6 ${collapsed ? 'px-0' : 'px-3'}`}>
+            {!collapsed ? (
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg overflow-hidden flex-shrink-0">
+                  <img src={coaLogo} alt="COA Logo" className="h-full w-full object-contain" />
+                </div>
+                <div>
+                  <h1 className="text-sm font-bold text-sidebar-foreground">COA ERP</h1>
+                  <p className="text-xs text-sidebar-foreground/80">Super Admin</p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-sm font-bold text-sidebar-foreground">COA ERP</h1>
-                <p className="text-xs text-sidebar-foreground/80">Super Admin</p>
+            ) : (
+              <div className="flex items-center justify-center w-full">
+                <div className="h-10 w-10 rounded-lg overflow-hidden">
+                  <img src={coaLogo} alt="COA Logo" className="h-full w-full object-contain" />
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="h-10 w-10 rounded-lg bg-sidebar-primary flex items-center justify-center mx-auto">
-              <Shield className="h-6 w-6 text-sidebar-primary-foreground" />
-            </div>
-          )}
-        </div>
+            )}
+          </div>
 
-        {/* Dashboard Link */}
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild>
-              <NavLink 
-                to="/" 
-                className="hover:bg-sidebar-accent" 
-                activeClassName="bg-sidebar-primary text-sidebar-primary-foreground"
-              >
-                <BarChart3 className="h-4 w-4" />
-                {!collapsed && <span>Dashboard</span>}
-              </NavLink>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+          {/* Dashboard Link */}
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <SidebarMenuButton asChild>
+                    <NavLink 
+                      to="/" 
+                      className="hover:bg-sidebar-accent" 
+                      activeClassName="bg-sidebar-primary text-sidebar-primary-foreground"
+                    >
+                      <BarChart3 className="h-4 w-4" />
+                      {!collapsed && <span>Dashboard</span>}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </TooltipTrigger>
+                <TooltipContent side="right" className={collapsed ? "" : "hidden"}>
+                  <p>Dashboard</p>
+                </TooltipContent>
+              </Tooltip>
+            </SidebarMenuItem>
+          </SidebarMenu>
 
-        {/* Modules */}
-        {modules.map((module) => (
-          <Collapsible
-            key={module.title}
-            open={openModules.includes(module.title)}
-            onOpenChange={() => toggleModule(module.title)}
-            className="mt-2"
-          >
-            <SidebarGroup>
-              <SidebarGroupLabel asChild>
-                <CollapsibleTrigger className="w-full hover:bg-sidebar-accent rounded-md transition-colors">
-                  <div className="flex items-center gap-2 py-2 px-3">
-                    <module.icon className="h-4 w-4 text-sidebar-foreground" />
-                    {!collapsed && (
-                      <>
-                        <span className="flex-1 text-left text-sm font-medium text-sidebar-foreground">
-                          {module.title}
-                        </span>
+          {/* Modules */}
+          <SidebarMenu className="space-y-1">
+            {modules.map((module) => (
+              <SidebarMenuItem key={module.title}>
+                {collapsed ? (
+                  // Collapsed state: Just show icon with tooltip
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <SidebarMenuButton className="w-full">
+                        <module.icon className="h-4 w-4" />
+                      </SidebarMenuButton>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p>{module.title}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  // Expanded state: Show collapsible with submodules
+                  <Collapsible
+                    open={openModules.includes(module.title)}
+                    onOpenChange={() => toggleModule(module.title)}
+                  >
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton className="w-full">
+                        <module.icon className="h-4 w-4" />
+                        <span className="flex-1 text-left">{module.title}</span>
                         <ChevronDown
                           className={`h-4 w-4 transition-transform ${
                             openModules.includes(module.title) ? "rotate-180" : ""
                           }`}
                         />
-                      </>
-                    )}
-                  </div>
-                </CollapsibleTrigger>
-              </SidebarGroupLabel>
-              <CollapsibleContent>
-                <SidebarGroupContent>
-                  <SidebarMenuSub>
-                    {module.submodules.map((submodule) => (
-                      <SidebarMenuSubItem key={submodule.url}>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to={submodule.url}
-                            className="hover:bg-sidebar-accent/50"
-                            activeClassName="bg-sidebar-primary/20 text-sidebar-foreground font-medium"
-                          >
-                            {!collapsed && <span className="text-xs">{submodule.title}</span>}
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                    ))}
-                  </SidebarMenuSub>
-                </SidebarGroupContent>
-              </CollapsibleContent>
-            </SidebarGroup>
-          </Collapsible>
-        ))}
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        {module.submodules.map((submodule) => (
+                          <SidebarMenuSubItem key={submodule.url}>
+                            <SidebarMenuSubButton asChild>
+                              <NavLink
+                                to={submodule.url}
+                                className="hover:bg-sidebar-accent/50"
+                                activeClassName="bg-sidebar-primary/20 text-sidebar-foreground font-medium"
+                              >
+                                <span className="text-xs">{submodule.title}</span>
+                              </NavLink>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </TooltipProvider>
       </SidebarContent>
     </Sidebar>
   );

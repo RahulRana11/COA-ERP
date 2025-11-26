@@ -1,12 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, UserPlus, Calendar, DollarSign, Bell, Settings } from "lucide-react";
+import { FileText, UserPlus, Calendar, IndianRupee, Bell, Settings } from "lucide-react";
 
 const quickActions = [
   { icon: FileText, label: "New Application", color: "bg-primary text-primary-foreground" },
   { icon: UserPlus, label: "Add Architect", color: "bg-accent text-accent-foreground" },
   { icon: Calendar, label: "Schedule Meeting", color: "bg-info text-white" },
-  { icon: DollarSign, label: "Process Payment", color: "bg-success text-white" },
+  { icon: IndianRupee, label: "Process Payment", color: "bg-success text-white" },
   { icon: Bell, label: "Send Notice", color: "bg-warning text-white" },
   { icon: Settings, label: "System Config", color: "bg-muted-foreground text-white" },
 ];

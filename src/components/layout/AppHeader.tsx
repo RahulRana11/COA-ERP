@@ -36,6 +36,9 @@ export function AppHeader() {
           </div>
         </div>
 
+        {/* Spacer to push right section to the end */}
+        <div className="flex-1"></div>
+
         {/* Right Section */}
         <div className="flex items-center gap-2">
           {/* Notifications */}
