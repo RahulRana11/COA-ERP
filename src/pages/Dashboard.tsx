@@ -3,8 +3,52 @@ import { QuickActions } from "@/components/dashboard/QuickActions";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { ApplicationsChart } from "@/components/dashboard/ApplicationsChart";
 import { Users, FileText, CheckCircle2, Clock, IndianRupee, Building } from "lucide-react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
 
 const Dashboard = () => {
+  const [stats, setStats] = useState({
+    totalArchitects: "0",
+    activeApplications: "0",
+    completedRenewals: "0",
+    pendingReviews: "0"
+  });
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const { count: archCount } = await supabase
+          .from('architect_profiles')
+          .select('*', { count: 'exact', head: true });
+        
+        const { count: appCount } = await supabase
+          .from('registration_applications')
+          .select('*', { count: 'exact', head: true })
+          .in('status', ['Submitted', 'Under Review', 'Query Raised']);
+          
+        const { count: renewCount } = await supabase
+          .from('post_registration_requests')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'Approved');
+          
+        const { count: pendingCount } = await supabase
+          .from('registration_applications')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'Under Review');
+
+        setStats({
+          totalArchitects: archCount?.toLocaleString() || "0",
+          activeApplications: appCount?.toLocaleString() || "0",
+          completedRenewals: renewCount?.toLocaleString() || "0",
+          pendingReviews: pendingCount?.toLocaleString() || "0"
+        });
+      } catch (err) {
+        console.error("Failed to load dashboard stats", err);
+      }
+    };
+    fetchStats();
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -18,32 +62,32 @@ const Dashboard = () => {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <KPICard
           title="Total Architects"
-          value="12,453"
-          change="+12% from last month"
+          value={stats.totalArchitects}
+          change="Live from DB"
           changeType="positive"
           icon={Users}
           iconColor="text-primary"
         />
         <KPICard
           title="Active Applications"
-          value="156"
-          change="23 new this week"
+          value={stats.activeApplications}
+          change="Live from DB"
           changeType="positive"
           icon={FileText}
           iconColor="text-info"
         />
         <KPICard
-          title="Completed Inspections"
-          value="89"
-          change="+8% this month"
+          title="Completed Renewals & Restorations"
+          value={stats.completedRenewals}
+          change="Live from DB"
           changeType="positive"
           icon={CheckCircle2}
           iconColor="text-success"
         />
         <KPICard
-          title="Pending Reviews"
-          value="43"
-          change="-5% from last week"
+          title="Pending Application Reviews"
+          value={stats.pendingReviews}
+          change="Live from DB"
           changeType="positive"
           icon={Clock}
           iconColor="text-warning"
