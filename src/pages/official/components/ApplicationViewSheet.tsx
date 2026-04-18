@@ -5,30 +5,23 @@ import { z } from "zod";
 import { toast } from "sonner";
 import {
     Pencil, X, Save, Loader2, User, GraduationCap, MapPin,
-    Briefcase, FileText, CheckCircle2, Clock, ArrowRight,
-    Calendar, CreditCard, Phone, Mail, Building2, Hash
+    Briefcase, CheckCircle2, Calendar, CreditCard, Phone, Mail,
+    Building2, Hash, Droplets, Users
 } from "lucide-react";
 
-import {
-    Sheet,
-    SheetContent,
-    SheetHeader,
-    SheetTitle,
-    SheetDescription,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 import { PersonalDetailsTab } from "@/pages/registration/components/edit-tabs/PersonalDetailsTab";
 import { QualificationDetailsTab } from "@/pages/registration/components/edit-tabs/QualificationDetailsTab";
 import { OtherDetailsTab } from "@/pages/registration/components/edit-tabs/OtherDetailsTab";
 import { DocumentsTab } from "@/pages/registration/components/edit-tabs/DocumentsTab";
-import { ApplicationRecord, WorkflowStage } from "@/store/authStore";
+import { ApplicationRecord } from "@/store/authStore";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Props ─────────────────────────────────────────────────────────────────────
 
 interface ApplicationViewSheetProps {
     app: ApplicationRecord | null;
@@ -36,7 +29,7 @@ interface ApplicationViewSheetProps {
     onOpenChange: (v: boolean) => void;
 }
 
-// ── Stage styles ──────────────────────────────────────────────────────────────
+// ── Stage config ──────────────────────────────────────────────────────────────
 
 const STAGE_LABELS: Record<string, string> = {
     Pending_Clerk: "Pending — Clerk",
@@ -56,7 +49,7 @@ const STAGE_COLORS: Record<string, string> = {
     Rejected: "bg-red-100 text-red-800 border-red-300",
 };
 
-// ── Edit form schema (mirrors EditApplicationDetails) ─────────────────────────
+// ── Edit form schema ──────────────────────────────────────────────────────────
 
 const editSchema = z.object({
     enrolmentNo: z.string().optional(),
@@ -120,24 +113,24 @@ const editSchema = z.object({
 
 type EditValues = z.infer<typeof editSchema>;
 
-// ── Helper: build edit defaults from ApplicationRecord ────────────────────────
+// ── Build defaults from ApplicationRecord ─────────────────────────────────────
 
 function buildEditDefaults(app: ApplicationRecord): EditValues {
     const nameParts = app.name.trim().split(" ");
     return {
-        enrolmentNo: app.appNumber,
-        title: app.gender === "Female" ? "Ms." : "Mr.",
+        enrolmentNo: app.enrolmentNumber ?? app.appNumber,
+        title: app.title,
         firstName: nameParts[0] ?? "",
         middleName: nameParts.length > 2 ? nameParts.slice(1, -1).join(" ") : "",
         lastName: nameParts.length > 1 ? nameParts[nameParts.length - 1] : "",
-        fatherName: "",
-        motherName: "",
-        husbandName: "",
-        casteCategory: "General",
+        fatherName: app.fatherName,
+        motherName: app.motherName,
+        husbandName: app.husbandName ?? "",
+        casteCategory: app.casteCategory,
         gender: app.gender,
-        bloodGroup: "",
-        mobile: "",
-        email: "",
+        bloodGroup: app.bloodGroup ?? "",
+        mobile: app.mobileNumber,
+        email: app.emailAddress,
         perm_house: app.residentialAddress.split(",")[0]?.trim() ?? "",
         perm_locality: app.residentialAddress.split(",")[1]?.trim() ?? "",
         perm_city: app.residentialAddress.split(",").slice(-1)[0]?.trim() ?? "",
@@ -152,8 +145,8 @@ function buildEditDefaults(app: ApplicationRecord): EditValues {
         prof_officeAddress: app.professionalAddress,
         prof_pincode: "",
         prof_state: "",
-        prof_mobile: "",
-        prof_email: "",
+        prof_mobile: app.mobileNumber,
+        prof_email: app.emailAddress,
         barch_recognizedFrom: "B.Arch (5-Year Full Time)",
         barch_courseName: "Bachelor of Architecture",
         barch_schoolName: app.qualification.split(" - ")[1]?.split(" (")[0] ?? "",
@@ -176,121 +169,232 @@ function buildEditDefaults(app: ApplicationRecord): EditValues {
     };
 }
 
-// ── Read-only info row ────────────────────────────────────────────────────────
+// ── Read-only helpers ─────────────────────────────────────────────────────────
 
-function InfoRow({ icon: Icon, label, value }: { icon: any; label: string; value: string | null | undefined }) {
+function InfoCell({
+    label, value, icon: Icon, highlight,
+}: {
+    label: string; value: string | null | undefined; icon?: any; highlight?: boolean;
+}) {
     if (!value) return null;
     return (
-        <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex-shrink-0 w-7 h-7 rounded-md bg-primary/8 flex items-center justify-center">
-                <Icon className="h-3.5 w-3.5 text-primary" />
+        <div className={`rounded-lg p-3 border ${highlight ? "bg-primary/5 border-primary/20" : "bg-muted/20 border-border/50"}`}>
+            <div className="flex items-center gap-1.5 mb-1">
+                {Icon && <Icon className="h-3 w-3 text-muted-foreground" />}
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
             </div>
-            <div className="min-w-0">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</p>
-                <p className="text-sm font-medium text-foreground leading-tight">{value}</p>
-            </div>
+            <p className={`text-sm font-semibold leading-tight ${highlight ? "text-primary" : "text-foreground"}`}>{value}</p>
         </div>
     );
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
+function SectionHeading({ children }: { children: React.ReactNode }) {
     return (
-        <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3 mt-1 flex items-center gap-2">
-            <span className="h-px flex-1 bg-border" />
-            <span>{children}</span>
-            <span className="h-px flex-1 bg-border" />
-        </h3>
+        <div className="flex items-center gap-3 my-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground whitespace-nowrap">
+                {children}
+            </span>
+            <div className="h-px flex-1 bg-border" />
+        </div>
     );
 }
 
-// ── Read-only View ────────────────────────────────────────────────────────────
+// ── Full read-only view (mirrors all 4 edit tabs) ─────────────────────────────
 
 function ApplicationReadView({ app }: { app: ApplicationRecord }) {
+    const d = buildEditDefaults(app);
+
     return (
-        <ScrollArea className="flex-1 min-h-0 px-6">
-            <div className="space-y-6 py-4 pb-8">
+        <ScrollArea className="flex-1 min-h-0">
+            <div className="px-6 py-4 pb-12">
 
-                {/* Application Meta */}
-                <div className="rounded-xl border bg-muted/30 p-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    <div className="text-center">
-                        <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">App No.</p>
-                        <p className="font-mono font-bold text-lg text-primary">#{app.appNumber}</p>
+                {/* ── Application meta strip ── */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 rounded-xl border bg-muted/30 p-3 mb-4">
+                    <InfoCell label="App No." value={`#${app.appNumber}`} icon={Hash} highlight />
+                    <InfoCell label="Mode" value={app.appMode} />
+                    <InfoCell label="Applied On" value={app.dateOfApp} icon={Calendar} />
+                    <InfoCell label="Hardcopy Received" value={app.hardcopyReceivedOn ?? "Not Received"} />
+                    <InfoCell label="Payment Status" value={app.paymentStatus} />
+                    {app.enrolmentNumber && <InfoCell label="Enrolment No." value={app.enrolmentNumber} icon={Hash} highlight />}
+                    {app.regNumber && <InfoCell label="Reg. Number" value={app.regNumber} icon={CreditCard} highlight />}
+                    {app.regDate && <InfoCell label="Reg. Date" value={app.regDate} icon={Calendar} />}
+                    {app.presidentApproveOn && <InfoCell label="President Approved" value={app.presidentApproveOn} icon={CheckCircle2} />}
+                </div>
+
+                {/* ════════════════════════════════════════════
+                    TAB 1 — Personal Details & Contact
+                ════════════════════════════════════════════ */}
+                <SectionHeading>Personal Information</SectionHeading>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <InfoCell label="Title" value={d.title} />
+                    <InfoCell label="First Name" value={d.firstName} icon={User} />
+                    <InfoCell label="Middle Name" value={d.middleName || "—"} />
+                    <InfoCell label="Last Name" value={d.lastName} />
+                    <InfoCell label="Gender" value={d.gender} />
+                    <InfoCell label="Date of Birth" value={app.dob} icon={Calendar} />
+                    <InfoCell label="Blood Group" value={d.bloodGroup || "—"} icon={Droplets} />
+                    <InfoCell label="Caste Category" value={d.casteCategory} />
+                    <InfoCell label="Nationality" value={app.nationality} />
+                </div>
+
+                <SectionHeading>Family Details</SectionHeading>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <InfoCell label="Father's Name" value={app.fatherName} icon={Users} />
+                    <InfoCell label="Mother's Name" value={app.motherName} icon={Users} />
+                    {app.husbandName && <InfoCell label="Husband's Name" value={app.husbandName} icon={Users} />}
+                </div>
+
+                <SectionHeading>Contact Information</SectionHeading>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <InfoCell label="Mobile Number" value={app.mobileNumber} icon={Phone} />
+                    <InfoCell label="Email ID" value={app.emailAddress} icon={Mail} />
+                </div>
+
+                <SectionHeading>Permanent Address</SectionHeading>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <InfoCell label="House / Flat" value={d.perm_house || "—"} icon={MapPin} />
+                    <InfoCell label="Locality / Sector" value={d.perm_locality || "—"} />
+                    <InfoCell label="City / Town" value={d.perm_city || "—"} />
+                    <InfoCell label="Pincode" value={d.perm_pincode || "—"} />
+                    <InfoCell label="State" value={d.perm_state || "—"} />
+                </div>
+
+                <SectionHeading>Present Address</SectionHeading>
+                {d.present_sameAsPermanent ? (
+                    <div className="rounded-lg border bg-blue-50 border-blue-200 px-3 py-2.5 text-xs text-blue-700 font-medium mb-2">
+                        ✓ Same as Permanent Address
                     </div>
-                    <div className="text-center">
-                        <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Mode</p>
-                        <Badge variant="outline" className="mt-0.5">{app.appMode}</Badge>
+                ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        <InfoCell label="House / Flat" value={d.present_house || "—"} icon={MapPin} />
+                        <InfoCell label="Locality / Sector" value={d.present_locality || "—"} />
+                        <InfoCell label="City / Town" value={d.present_city || "—"} />
+                        <InfoCell label="Pincode" value={d.present_pincode || "—"} />
+                        <InfoCell label="State" value={d.present_state || "—"} />
                     </div>
-                    <div className="text-center">
-                        <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Stage</p>
-                        <span className={`text-[11px] font-semibold mt-0.5 inline-block px-2 py-0.5 rounded-full border ${STAGE_COLORS[app.workflow_stage]}`}>
-                            {STAGE_LABELS[app.workflow_stage]}
-                        </span>
-                    </div>
-                    {app.regNumber && (
-                        <div className="text-center">
-                            <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Reg. No.</p>
-                            <p className="font-mono text-sm font-semibold text-green-700">{app.regNumber}</p>
-                        </div>
+                )}
+
+                <SectionHeading>Professional / Office Address</SectionHeading>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <InfoCell label="Office Address" value={d.prof_officeAddress || app.professionalAddress} icon={Building2} />
+                    <InfoCell label="Pincode" value={d.prof_pincode || "—"} />
+                    <InfoCell label="State" value={d.prof_state || "—"} />
+                    <InfoCell label="Office Mobile" value={d.prof_mobile || "—"} icon={Phone} />
+                    <InfoCell label="Office Email" value={d.prof_email || "—"} icon={Mail} />
+                </div>
+
+                {/* ════════════════════════════════════════════
+                    TAB 2 — Qualification Details
+                ════════════════════════════════════════════ */}
+                <SectionHeading>Architecture Degree</SectionHeading>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <InfoCell label="Recognized Qualification From" value={d.barch_recognizedFrom} icon={GraduationCap} />
+                    <InfoCell label="Name of Course" value={d.barch_courseName} />
+                    <InfoCell label="Arch. School / Institute" value={d.barch_schoolName || "—"} />
+                    <InfoCell label="University" value={d.barch_universityName || "—"} />
+                    <InfoCell label="Year of Admission" value={d.barch_yearOfAdmission || "—"} />
+                    <InfoCell label="Year of Graduation" value={d.barch_yearOfGraduation || "—"} icon={Calendar} />
+                    <InfoCell label="Passing Format" value={d.barch_passingFormat || "—"} />
+                    <InfoCell label="Grade / Marks Attained" value={d.barch_gradeAttained || "—"} highlight />
+                    {app.additionalQualification && (
+                        <InfoCell label="Additional Qualification" value={app.additionalQualification} icon={GraduationCap} />
                     )}
-                    <div className="text-center">
-                        <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Applied On</p>
-                        <p className="text-sm font-medium">{app.dateOfApp}</p>
-                    </div>
-                    <div className="text-center">
-                        <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Hardcopy</p>
-                        <p className="text-sm font-medium">{app.hardcopyReceivedOn ?? "Not Received"}</p>
-                    </div>
                 </div>
 
-                {/* Personal Details */}
-                <div>
-                    <SectionTitle>Personal Details</SectionTitle>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <InfoRow icon={User} label="Full Name" value={app.name} />
-                        <InfoRow icon={Calendar} label="Date of Birth" value={app.dob} />
-                        <InfoRow icon={User} label="Gender" value={app.gender} />
-                        <InfoRow icon={Hash} label="Nationality" value={app.nationality} />
-                    </div>
+                <SectionHeading>10+2 / Equivalent Examination</SectionHeading>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <InfoCell label="Name of Examination" value={d.twelfth_examName} />
+                    <InfoCell label="Name of Board" value={d.twelfth_boardName} />
+                    <InfoCell label="Mathematics Passed" value={d.twelfth_mathsPassed || "—"} highlight />
+                    <InfoCell label="Aggregate Marks" value={d.twelfth_aggregateMarks || "—"} />
+                    <InfoCell label="Maximum Marks" value={d.twelfth_maximumMarks || "—"} />
+                    <InfoCell
+                        label="Percentage (%)"
+                        value={
+                            d.twelfth_aggregateMarks && d.twelfth_maximumMarks
+                                ? `${((+d.twelfth_aggregateMarks / +d.twelfth_maximumMarks) * 100).toFixed(2)}%`
+                                : "—"
+                        }
+                        highlight
+                    />
                 </div>
 
-                {/* Qualification */}
-                <div>
-                    <SectionTitle>Qualification</SectionTitle>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <InfoRow icon={GraduationCap} label="Architecture Qualification" value={app.qualification} />
-                        {app.additionalQualification && (
-                            <InfoRow icon={GraduationCap} label="Additional Qualification" value={app.additionalQualification} />
-                        )}
-                    </div>
+                {/* ════════════════════════════════════════════
+                    TAB 3 — Professional Details
+                ════════════════════════════════════════════ */}
+                <SectionHeading>Professional Details</SectionHeading>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <InfoCell
+                        label="Date of Commencement"
+                        value={d.prof_dateOfCommencement ? new Date(d.prof_dateOfCommencement).toLocaleDateString("en-IN") : "—"}
+                        icon={Calendar}
+                    />
+                    <InfoCell label="Type of Profession" value={d.prof_typeOfProfession || "—"} icon={Briefcase} />
+                    <InfoCell
+                        label="Period in India"
+                        value={`${d.prof_indiaYears ?? 0} yrs ${d.prof_indiaMonths ?? 0} mos`}
+                    />
+                    <InfoCell
+                        label="Period Outside India"
+                        value={`${d.prof_outsideYears ?? 0} yrs ${d.prof_outsideMonths ?? 0} mos`}
+                    />
+                    {d.prof_remarks && <InfoCell label="Remarks" value={d.prof_remarks} />}
                 </div>
 
-                {/* Addresses */}
-                <div>
-                    <SectionTitle>Addresses</SectionTitle>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <InfoRow icon={MapPin} label="Residential Address" value={app.residentialAddress} />
-                        <InfoRow icon={Building2} label="Professional Address" value={app.professionalAddress} />
-                        <InfoRow icon={MapPin} label="Communication Address" value={app.communicationAddress} />
-                    </div>
+                {/* ════════════════════════════════════════════
+                    TAB 4 — Documents
+                ════════════════════════════════════════════ */}
+                <SectionHeading>Document Status</SectionHeading>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {[
+                        { label: "Passport Size Photograph", status: "Uploaded" },
+                        { label: "Applicant Signature", status: "Uploaded" },
+                        { label: "Date of Birth Proof", status: "Uploaded" },
+                        {
+                            label: "Caste Certificate",
+                            status: app.casteCategory !== "General"
+                                ? "Required — Pending Upload"
+                                : "N/A (General Category)",
+                        },
+                        { label: "Provisional / Final Degree Certificate", status: "Uploaded" },
+                        { label: "All Semester / Consolidated Marksheet", status: "Uploaded" },
+                        { label: "10+2 or Equivalent Marksheet", status: "Uploaded" },
+                        { label: "Practical Training Certificate", status: "Not Uploaded" },
+                    ].map((doc) => {
+                        const isUploaded = doc.status === "Uploaded";
+                        const isPending = doc.status.startsWith("Required");
+                        const isNA = doc.status.startsWith("N/A");
+                        return (
+                            <div
+                                key={doc.label}
+                                className={`rounded-lg border p-3 flex items-center justify-between gap-3 ${
+                                    isUploaded ? "bg-emerald-50 border-emerald-200"
+                                    : isPending ? "bg-amber-50 border-amber-200"
+                                    : isNA ? "bg-muted/10 border-border/30"
+                                    : "bg-muted/20 border-border/50"
+                                }`}
+                            >
+                                <p className="text-xs font-medium text-foreground">{doc.label}</p>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${
+                                    isUploaded ? "bg-emerald-100 text-emerald-700"
+                                    : isPending ? "bg-amber-100 text-amber-700"
+                                    : isNA ? "bg-muted text-muted-foreground"
+                                    : "bg-muted text-muted-foreground"
+                                }`}>
+                                    {doc.status}
+                                </span>
+                            </div>
+                        );
+                    })}
                 </div>
 
-                {/* Timeline / Dates */}
-                <div>
-                    <SectionTitle>Timeline & Approval</SectionTitle>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <InfoRow icon={Clock} label="Date of Application" value={app.dateOfApp} />
-                        <InfoRow icon={FileText} label="Hardcopy Received" value={app.hardcopyReceivedOn ?? "Not yet received"} />
-                        <InfoRow icon={Hash} label="Registration Number" value={app.regNumber ?? "Not yet assigned"} />
-                        <InfoRow icon={Calendar} label="Registration Date" value={app.regDate ?? "Not yet issued"} />
-                        <InfoRow icon={CheckCircle2} label="President Approved On" value={app.presidentApproveOn ?? "Pending"} />
-                    </div>
-                </div>
             </div>
         </ScrollArea>
     );
 }
 
-// ── Inline Edit View ──────────────────────────────────────────────────────────
+// ── Inline edit view ──────────────────────────────────────────────────────────
 
 function ApplicationEditView({ app, onSaved }: { app: ApplicationRecord; onSaved: () => void }) {
     const [isSaving, setIsSaving] = useState(false);
@@ -299,7 +403,6 @@ function ApplicationEditView({ app, onSaved }: { app: ApplicationRecord; onSaved
         resolver: zodResolver(editSchema),
         defaultValues: buildEditDefaults(app),
     });
-
     const { formState: { isDirty } } = methods;
 
     const onSubmit = (data: EditValues) => {
@@ -307,25 +410,23 @@ function ApplicationEditView({ app, onSaved }: { app: ApplicationRecord; onSaved
         setTimeout(() => {
             methods.reset(data);
             setIsSaving(false);
-            toast.success(`Application #${app.appNumber} successfully updated.`, {
-                description: "Changes have been saved.",
-            });
+            toast.success(`Application #${app.appNumber} successfully updated.`);
             onSaved();
         }, 1500);
     };
 
     return (
         <FormProvider {...methods}>
-            <form onSubmit={methods.handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
+            <form onSubmit={methods.handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0 overflow-hidden">
                 {isDirty && (
-                    <div className="mx-6 mt-2 mb-0 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800 font-medium flex items-center gap-2">
+                    <div className="mx-6 mt-3 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800 font-medium flex items-center gap-2 flex-shrink-0">
                         <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-                        Unsaved changes — scroll down and click Save Changes
+                        Unsaved changes — click Save Changes below
                     </div>
                 )}
 
-                <ScrollArea className="flex-1 min-h-0 px-6 mt-3">
-                    <div className="pb-32">
+                <ScrollArea className="flex-1 min-h-0 mt-2">
+                    <div className="px-6 pb-8">
                         <Tabs defaultValue="personal">
                             <TabsList className="w-full grid grid-cols-2 lg:grid-cols-4 mb-5 h-auto p-1">
                                 <TabsTrigger value="personal" className="text-xs py-2">Personal & Contact</TabsTrigger>
@@ -341,19 +442,12 @@ function ApplicationEditView({ app, onSaved }: { app: ApplicationRecord; onSaved
                     </div>
                 </ScrollArea>
 
-                {/* Sticky save bar inside sheet */}
                 <div className="border-t bg-background/95 backdrop-blur px-6 py-3 flex items-center justify-between gap-3 flex-shrink-0">
                     <p className="text-xs text-muted-foreground hidden sm:block truncate">
                         {isDirty ? "You have unsaved changes" : `Editing App #${app.appNumber}`}
                     </p>
                     <div className="flex gap-2 ml-auto">
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => methods.reset()}
-                            disabled={!isDirty || isSaving}
-                        >
+                        <Button type="button" variant="outline" size="sm" onClick={() => methods.reset()} disabled={!isDirty || isSaving}>
                             Discard
                         </Button>
                         <Button type="submit" size="sm" disabled={!isDirty || isSaving} className="min-w-[130px]">
@@ -369,12 +463,11 @@ function ApplicationEditView({ app, onSaved }: { app: ApplicationRecord; onSaved
     );
 }
 
-// ── Main Sheet Export ─────────────────────────────────────────────────────────
+// ── Main export ───────────────────────────────────────────────────────────────
 
 export function ApplicationViewSheet({ app, open, onOpenChange }: ApplicationViewSheetProps) {
     const [isEditing, setIsEditing] = useState(false);
 
-    // Reset to view mode whenever a different app is opened
     const handleOpenChange = (v: boolean) => {
         if (!v) setIsEditing(false);
         onOpenChange(v);
@@ -384,69 +477,56 @@ export function ApplicationViewSheet({ app, open, onOpenChange }: ApplicationVie
 
     return (
         <Sheet open={open} onOpenChange={handleOpenChange}>
-            <SheetContent
-                side="right"
-                className="w-full sm:max-w-3xl p-0 flex flex-col gap-0 overflow-hidden"
-            >
-                {/* ── Header ── */}
+            <SheetContent side="right" className="w-full sm:max-w-3xl p-0 flex flex-col gap-0 overflow-hidden">
+
+                {/* Header */}
                 <SheetHeader className="px-6 pt-5 pb-4 border-b bg-muted/20 flex-shrink-0">
                     <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                             <SheetTitle className="text-xl font-bold flex items-center gap-2 flex-wrap">
-                                {app.name}
-                                <span className="font-mono text-base text-muted-foreground font-normal">
-                                    #{app.appNumber}
-                                </span>
+                                {app.title} {app.name}
+                                <span className="font-mono text-sm text-muted-foreground font-normal">#{app.appNumber}</span>
                             </SheetTitle>
-                            <SheetDescription className="flex items-center gap-2 mt-1 flex-wrap">
-                                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${STAGE_COLORS[app.workflow_stage]}`}>
+                            <SheetDescription className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${STAGE_COLORS[app.workflow_stage]}`}>
                                     {STAGE_LABELS[app.workflow_stage]}
                                 </span>
-                                <span className="text-xs text-muted-foreground">{app.qualification}</span>
+                                <span className="text-xs text-muted-foreground">·</span>
+                                <span className="text-xs text-muted-foreground truncate">{app.qualification}</span>
                             </SheetDescription>
                         </div>
 
-                        {/* Edit / Back toggle */}
                         {!isEditing ? (
-                            <Button
-                                size="sm"
-                                className="flex-shrink-0 gap-1.5"
-                                onClick={() => setIsEditing(true)}
-                            >
+                            <Button size="sm" className="flex-shrink-0 gap-1.5" onClick={() => setIsEditing(true)}>
                                 <Pencil className="h-3.5 w-3.5" />
                                 Edit Application
                             </Button>
                         ) : (
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                className="flex-shrink-0 gap-1.5"
-                                onClick={() => setIsEditing(false)}
-                            >
+                            <Button size="sm" variant="outline" className="flex-shrink-0 gap-1.5" onClick={() => setIsEditing(false)}>
                                 <X className="h-3.5 w-3.5" />
                                 Back to View
                             </Button>
                         )}
                     </div>
 
-                    {/* Mode indicator */}
                     <div className="flex items-center gap-2 mt-2">
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${isEditing ? "bg-amber-100 text-amber-700" : "bg-blue-50 text-blue-700"}`}>
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+                            isEditing ? "bg-amber-100 text-amber-700" : "bg-blue-50 text-blue-700"
+                        }`}>
                             {isEditing ? "✎ Edit Mode" : "👁 View Mode"}
                         </span>
+                        {app.enrolmentNumber && (
+                            <span className="text-[11px] text-muted-foreground font-mono">{app.enrolmentNumber}</span>
+                        )}
                     </div>
                 </SheetHeader>
 
-                {/* ── Body ── */}
+                {/* Body */}
                 <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-                    {isEditing ? (
-                        <ApplicationEditView
-                            app={app}
-                            onSaved={() => setIsEditing(false)}
-                        />
-                    ) : (
-                        <ApplicationReadView app={app} />
-                    )}
+                    {isEditing
+                        ? <ApplicationEditView app={app} onSaved={() => setIsEditing(false)} />
+                        : <ApplicationReadView app={app} />
+                    }
                 </div>
             </SheetContent>
         </Sheet>

@@ -128,6 +128,8 @@ export default function OfficialDashboard() {
 
             // Tab filter
             if (activeTab === "inbox") {
+                // Exclude Approved from inbox
+                if (app.workflow_stage === "Approved") return false;
                 if (!visibleStages.includes(app.workflow_stage)) return false;
             } else if (activeTab === "approved") {
                 if (app.workflow_stage !== "Approved") return false;
@@ -343,7 +345,6 @@ export default function OfficialDashboard() {
                                 <TableHead className="font-semibold">Qualification</TableHead>
                                 <TableHead className="font-semibold">Mode</TableHead>
                                 <TableHead className="font-semibold">Date</TableHead>
-                                <TableHead className="font-semibold">Workflow Stage</TableHead>
                                 <TableHead className="font-semibold text-center">Details</TableHead>
                                 <TableHead className="font-semibold text-right">Actions</TableHead>
                             </TableRow>
@@ -351,7 +352,7 @@ export default function OfficialDashboard() {
                         <TableBody>
                             {filteredData.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={8} className="h-32 text-center">
+                                    <TableCell colSpan={7} className="h-32 text-center">
                                         <div className="flex flex-col items-center gap-2 text-muted-foreground">
                                             <AlertTriangle className="h-8 w-8 text-muted-foreground/50" />
                                             <p className="font-medium">No applications in your inbox</p>
@@ -387,21 +388,14 @@ export default function OfficialDashboard() {
                                                 <Badge variant="outline" className="text-xs">{app.appMode}</Badge>
                                             </TableCell>
                                             <TableCell className="text-xs text-muted-foreground">{app.dateOfApp}</TableCell>
-                                            <TableCell>
-                                                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${STAGE_COLORS[app.workflow_stage]}`}>
-                                                    {STAGE_LABELS[app.workflow_stage]}
-                                                </span>
-                                            </TableCell>
                                             <TableCell className="text-center">
                                                 <Button
                                                     size="sm"
-                                                    variant="ghost"
-                                                    className="h-7 w-7 p-0 rounded-full hover:bg-primary/10 hover:text-primary"
+                                                    variant="outline"
+                                                    className="h-7 px-3 text-xs font-medium gap-1.5 hover:bg-primary hover:text-primary-foreground transition-colors"
                                                     onClick={() => setViewingApp(app)}
-                                                    title="View Application"
                                                 >
-                                                    <Eye className="h-4 w-4" />
-                                                    <span className="sr-only">View</span>
+                                                    View
                                                 </Button>
                                             </TableCell>
                                             <TableCell className="text-right">
