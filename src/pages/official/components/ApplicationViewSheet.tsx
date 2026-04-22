@@ -202,12 +202,12 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 
 // ── Full read-only view (mirrors all 4 edit tabs) ─────────────────────────────
 
-function ApplicationReadView({ app }: { app: ApplicationRecord }) {
+export function ApplicationReadView({ app }: { app: ApplicationRecord }) {
     const d = buildEditDefaults(app);
 
     return (
-        <ScrollArea className="flex-1 min-h-0">
-            <div className="px-6 py-4 pb-12">
+        <div className="flex-1 w-full relative">
+            <div className="px-1 py-4 pb-12">
 
                 {/* ── Application meta strip ── */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 rounded-xl border bg-muted/30 p-3 mb-4">
@@ -368,20 +368,18 @@ function ApplicationReadView({ app }: { app: ApplicationRecord }) {
                         return (
                             <div
                                 key={doc.label}
-                                className={`rounded-lg border p-3 flex items-center justify-between gap-3 ${
-                                    isUploaded ? "bg-emerald-50 border-emerald-200"
+                                className={`rounded-lg border p-3 flex items-center justify-between gap-3 ${isUploaded ? "bg-emerald-50 border-emerald-200"
                                     : isPending ? "bg-amber-50 border-amber-200"
-                                    : isNA ? "bg-muted/10 border-border/30"
-                                    : "bg-muted/20 border-border/50"
-                                }`}
+                                        : isNA ? "bg-muted/10 border-border/30"
+                                            : "bg-muted/20 border-border/50"
+                                    }`}
                             >
                                 <p className="text-xs font-medium text-foreground">{doc.label}</p>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${
-                                    isUploaded ? "bg-emerald-100 text-emerald-700"
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${isUploaded ? "bg-emerald-100 text-emerald-700"
                                     : isPending ? "bg-amber-100 text-amber-700"
-                                    : isNA ? "bg-muted text-muted-foreground"
-                                    : "bg-muted text-muted-foreground"
-                                }`}>
+                                        : isNA ? "bg-muted text-muted-foreground"
+                                            : "bg-muted text-muted-foreground"
+                                    }`}>
                                     {doc.status}
                                 </span>
                             </div>
@@ -390,13 +388,13 @@ function ApplicationReadView({ app }: { app: ApplicationRecord }) {
                 </div>
 
             </div>
-        </ScrollArea>
+        </div>
     );
 }
 
 // ── Inline edit view ──────────────────────────────────────────────────────────
 
-function ApplicationEditView({ app, onSaved }: { app: ApplicationRecord; onSaved: () => void }) {
+export function ApplicationEditView({ app, onSaved, onCancel }: { app: ApplicationRecord; onSaved: () => void; onCancel?: () => void }) {
     const [isSaving, setIsSaving] = useState(false);
 
     const methods = useForm<EditValues>({
@@ -447,9 +445,11 @@ function ApplicationEditView({ app, onSaved }: { app: ApplicationRecord; onSaved
                         {isDirty ? "You have unsaved changes" : `Editing App #${app.appNumber}`}
                     </p>
                     <div className="flex gap-2 ml-auto">
-                        <Button type="button" variant="outline" size="sm" onClick={() => methods.reset()} disabled={!isDirty || isSaving}>
-                            Discard
-                        </Button>
+                        {isDirty && (
+                            <Button type="button" variant="outline" size="sm" onClick={() => { methods.reset(); onCancel?.(); }} disabled={isSaving}>
+                                Discard Changes
+                            </Button>
+                        )}
                         <Button type="submit" size="sm" disabled={!isDirty || isSaving} className="min-w-[130px]">
                             {isSaving
                                 ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Saving...</>
@@ -510,9 +510,8 @@ export function ApplicationViewSheet({ app, open, onOpenChange }: ApplicationVie
                     </div>
 
                     <div className="flex items-center gap-2 mt-2">
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
-                            isEditing ? "bg-amber-100 text-amber-700" : "bg-blue-50 text-blue-700"
-                        }`}>
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${isEditing ? "bg-amber-100 text-amber-700" : "bg-blue-50 text-blue-700"
+                            }`}>
                             {isEditing ? "✎ Edit Mode" : "👁 View Mode"}
                         </span>
                         {app.enrolmentNumber && (

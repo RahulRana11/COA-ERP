@@ -1,223 +1,393 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useForm, Controller } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { reviewActionSchema, ReviewActionValues } from "@/lib/validations/reviewAction";
 import { toast } from "sonner";
-import { ArrowLeft, FileText, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+    ArrowLeft, FileText, CheckCircle2, AlertCircle, ArrowRight,
+    RotateCcw, MessageSquareWarning, XCircle, Award, ChevronDown,
+    Clock, User2, Pencil, X
+} from "lucide-react";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { ApplicationReadView, ApplicationEditView } from "./components/ApplicationViewSheet";
+
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Separator } from "@/components/ui/separator";
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
-// Mock data fetching based on ID could go here
-const MOCK_DATA = {
-    refNumber: "APP-2026-6729",
-    status: "Preliminary Scrutiny",
-    enrolmentNo: "REG-98214",
-    personal: {
-        fullName: "Mr. Aarav Patel",
-        dob: "1994-08-15",
-        gender: "Male",
-        aadhaar: "1234 5678 9012"
-    },
-    contact: {
-        email: "aarav.p@example.com",
-        mobile: "9876543210",
-        address: "123 New Road, Model Town, Delhi, India - 110009"
-    },
-    academic: {
-        tenth: "CBSE - 2010 - 89%",
-        twelfth: "CBSE - 12th - 2012 - 82%",
-        barch: "Delhi University - SPA Delhi - 2017 - CGPA 8.5"
-    }
-};
+import {
+    useAuthStore,
+    getUserStage,
+    STAGE_LABELS,
+    STAGE_COLORS,
+    REVERT_STAGE,
+    WorkflowStage,
+    AuditTrailEntry,
+} from "@/store/authStore";
 
-export default function ApplicationReviewPage() {
-    const { id } = useParams();
-    const navigate = useNavigate();
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type ActionType =
+    | "forward"
+    | "allotAndForward"
+    | "finalApprove"
+    | "raiseQuery"
+    | "revertS1"
+    | "revertS2"
+    | "revertS3"
+    | "remove";
+
+// ── Audit trail display ───────────────────────────────────────────────────────
+
+function AuditTrail({ entries }: { entries: AuditTrailEntry[] }) {
+    const [open, setOpen] = useState(false);
+    if (entries.length === 0) return null;
+
+    return (
+        <Collapsible open={open} onOpenChange={setOpen}>
+            <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm" className="w-full justify-between text-muted-foreground hover:text-foreground border rounded-md px-3 py-2 h-auto">
+                    <span className="flex items-center gap-2 text-xs font-medium">
+                        <Clock className="h-3.5 w-3.5" />
+                        Audit Trail ({entries.length} events)
+                    </span>
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+                </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+                <div className="mt-2 space-y-2">
+                    {[...entries].reverse().map((e, i) => (
+                        <div key={i} className="rounded-md border bg-muted/20 px-3 py-2.5 text-xs">
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                                <span className="flex items-center gap-1.5 font-semibold text-foreground">
+                                    <User2 className="h-3 w-3 text-primary" />
+                                    {e.actor}
+                                </span>
+                                <span className="text-muted-foreground tabular-nums">
+                                    {new Date(e.timestamp).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                                </span>
+                            </div>
+                            <p className="font-medium text-primary mb-0.5">{e.action}</p>
+                            <p className="text-muted-foreground italic">"{e.remarks}"</p>
+                        </div>
+                    ))}
+                </div>
+            </CollapsibleContent>
+        </Collapsible>
+    );
+}
+
+// ── Per-stage action panel ────────────────────────────────────────────────────
+
+interface ActionPanelProps {
+    appId: string;
+    appNumber: string;
+    currentStage: WorkflowStage;
+    userStage: number | null; // 1–4 or null (Super Admin)
+    onDone: () => void;
+}
+
+function ActionPanel({ appId, appNumber, currentStage, userStage, onDone }: ActionPanelProps) {
+    const { activeUser, forwardApplication, allotRegNumberAndForward, revertApplication, raiseQuery, removeFromPortal, finalApprove } = useAuthStore();
+    const actorName = activeUser.fullName;
+
+    const [selectedAction, setSelectedAction] = useState<ActionType | null>(null);
+    const [remarks, setRemarks] = useState("");
+    const [remarksError, setRemarksError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // Zod + React Hook Form setup
-    const { register, handleSubmit, control, formState: { errors } } = useForm<ReviewActionValues>({
-        resolver: zodResolver(reviewActionSchema),
-        defaultValues: {
-            action: "Forward to HOD",
-            remarks: ""
-        },
-        mode: "onTouched"
-    });
+    const REMARK_REQUIRED: ActionType[] = ["raiseQuery", "revertS1", "revertS2", "revertS3", "remove"];
+    const needsRemarks = selectedAction !== null && REMARK_REQUIRED.includes(selectedAction);
 
-    const onSubmit = async (data: ReviewActionValues) => {
+    const handleSubmit = async () => {
+        if (!selectedAction) {
+            toast.error("Please select an action first.");
+            return;
+        }
+        if (needsRemarks && !remarks.trim()) {
+            setRemarksError("Remarks are mandatory for this action.");
+            return;
+        }
         setIsSubmitting(true);
+        await new Promise((r) => setTimeout(r, 900));
 
-        // Simulate 1.5 seconds mock API Call
-        setTimeout(() => {
-            setIsSubmitting(false);
-
-            // Dynamic Toast message based on action
-            let msg = "Action recorded successfully.";
-            if (data.action === "Forward to HOD") msg = "Application forwarded to HOD successfully.";
-            else if (data.action === "Raise Query to Applicant") msg = "Query raised to applicant. Notification sent.";
-            else if (data.action === "Approve") msg = "Application formally approved.";
-            else if (data.action === "Reject") msg = "Application rejected.";
-            else if (data.action === "Revert to Previous Officer") msg = "Application reverted to previous officer.";
-
-            toast.success(msg);
-            navigate("/official/dashboard"); // Return to Dashboard
-        }, 1500);
+        switch (selectedAction) {
+            case "forward":
+                forwardApplication(appId, actorName);
+                toast.success(`Application #${appNumber} forwarded to next stage.`);
+                break;
+            case "allotAndForward":
+                allotRegNumberAndForward(appId, actorName);
+                toast.success(`Reg. number allotted & forwarded for certificate generation.`);
+                break;
+            case "finalApprove":
+                finalApprove(appId, actorName);
+                toast.success(`Application #${appNumber} approved. Certificate & ID issued.`);
+                break;
+            case "raiseQuery":
+                raiseQuery(appId, remarks.trim(), actorName);
+                toast.warning(`Query raised to applicant for #${appNumber}.`);
+                break;
+            case "revertS1":
+                revertApplication(appId, "Stage_1_Processing", remarks.trim(), actorName);
+                toast.info(`Application #${appNumber} reverted to Stage 1.`);
+                break;
+            case "revertS2":
+                revertApplication(appId, "Stage_2_Scrutiny", remarks.trim(), actorName);
+                toast.info(`Application #${appNumber} reverted to Stage 2.`);
+                break;
+            case "revertS3":
+                revertApplication(appId, "Stage_3_RegNo", remarks.trim(), actorName);
+                toast.info(`Application #${appNumber} reverted to Stage 3.`);
+                break;
+            case "remove":
+                removeFromPortal(appId, actorName, remarks.trim() || undefined);
+                toast.error(`Application #${appNumber} removed from portal.`);
+                break;
+        }
+        setIsSubmitting(false);
+        onDone();
     };
 
-    const handleDocumentClick = (e: React.MouseEvent) => {
-        e.preventDefault();
-        // Normally would open a Dialog or download window
-        toast.message("Mock Document Opened in Viewer");
-    };
+    // Shorthand button builders
+    const ActionBtn = ({
+        action, label, icon: Icon, colorClass = "", variant = "outline" as const,
+    }: { action: ActionType; label: string; icon: any; colorClass?: string; variant?: "outline" | "default" | "destructive"; }) => (
+        <button
+            type="button"
+            onClick={() => { setSelectedAction(action); setRemarksError(""); }}
+            className={`w-full flex items-start gap-2.5 rounded-md border p-3 text-sm text-left transition-all
+                ${selectedAction === action
+                    ? "border-primary bg-primary/5 ring-1 ring-primary"
+                    : "hover:bg-muted/50 bg-background"
+                } ${colorClass}`}
+        >
+            <Icon className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <span className="font-medium leading-tight">{label}</span>
+        </button>
+    );
+
+    return (
+        <Card className="shadow-md border-primary/20 lg:sticky top-[100px]">
+            <CardHeader className="bg-primary/5 border-b py-4">
+                <h3 className="font-semibold text-base flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-primary" />
+                    Workflow Action Panel
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                    {userStage
+                        ? `You are acting as Stage ${userStage}`
+                        : "Super Admin — all actions available"}
+                </p>
+            </CardHeader>
+            <CardContent className="pt-4 space-y-2">
+                {/* ── Stage 1: Clerk ──────────────────────────────── */}
+                {(userStage === 1 || userStage === null) && currentStage === "Stage_1_Processing" && (
+                    <>
+                        <ActionBtn action="forward" label="Forward Application (→ Stage 2: Scrutiny)" icon={ArrowRight} colorClass="text-blue-700" />
+                        <ActionBtn action="remove" label="Remove Application from Portal" icon={XCircle} colorClass="text-destructive" />
+                    </>
+                )}
+
+                {/* ── Stage 2: HOD ────────────────────────────────── */}
+                {(userStage === 2 || userStage === null) && currentStage === "Stage_2_Scrutiny" && (
+                    <>
+                        <ActionBtn action="forward" label="Forward Application (→ Stage 3: Reg. Number)" icon={ArrowRight} colorClass="text-blue-700" />
+                        <ActionBtn action="raiseQuery" label="Send Back to Applicant (Query Raised)" icon={MessageSquareWarning} colorClass="text-amber-700" />
+                        <ActionBtn action="revertS1" label="Revert to Stage 1 — Application Processing" icon={RotateCcw} colorClass="text-orange-700" />
+                        <ActionBtn action="remove" label="Remove Application from Portal" icon={XCircle} colorClass="text-destructive" />
+                    </>
+                )}
+
+                {/* ── Stage 3: Registrar ──────────────────────────── */}
+                {(userStage === 3 || userStage === null) && currentStage === "Stage_3_RegNo" && (
+                    <>
+                        <ActionBtn action="allotAndForward" label="Allot Reg. Number & Forward (→ Stage 4: Certificate)" icon={ArrowRight} colorClass="text-blue-700" />
+                        <ActionBtn action="revertS2" label="Revert to Stage 2 — Under Scrutiny" icon={RotateCcw} colorClass="text-orange-700" />
+                        <ActionBtn action="remove" label="Remove Application from Portal" icon={XCircle} colorClass="text-destructive" />
+                    </>
+                )}
+
+                {/* ── Stage 4: President ──────────────────────────── */}
+                {(userStage === 4 || userStage === null) && currentStage === "Stage_4_Certificate" && (
+                    <>
+                        <ActionBtn action="finalApprove" label="Proceed — Final Approval & Issue Certificate" icon={Award} colorClass="text-emerald-700" />
+                        <ActionBtn action="revertS3" label="Revert to Stage 3 — Generate Reg. Number" icon={RotateCcw} colorClass="text-orange-700" />
+                        <ActionBtn action="remove" label="Remove Application from Portal" icon={XCircle} colorClass="text-destructive" />
+                    </>
+                )}
+
+                {/* No matching stage */}
+                {userStage !== null && currentStage !== `Stage_${userStage}_Processing` &&
+                    currentStage !== `Stage_${userStage}_Scrutiny` &&
+                    currentStage !== `Stage_${userStage}_RegNo` &&
+                    currentStage !== `Stage_${userStage}_Certificate` &&
+                    !["Stage_1_Processing", "Stage_2_Scrutiny", "Stage_3_RegNo", "Stage_4_Certificate"].includes(currentStage) && (
+                        <p className="text-xs text-muted-foreground text-center py-4">
+                            This application is not in your workflow stage.
+                        </p>
+                    )}
+
+                {/* Remarks textarea — appears when needed */}
+                {needsRemarks && (
+                    <div className="space-y-1.5 pt-1">
+                        <Separator />
+                        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                            Remarks <span className="text-destructive">*</span>
+                        </Label>
+                        <Textarea
+                            value={remarks}
+                            onChange={(e) => { setRemarks(e.target.value); setRemarksError(""); }}
+                            placeholder="Enter mandatory remarks for this action — stored permanently in audit trail..."
+                            className="min-h-[100px] resize-none text-sm"
+                        />
+                        {remarksError && <p className="text-destructive text-xs font-medium">{remarksError}</p>}
+                    </div>
+                )}
+
+                {/* Terminal states — read only */}
+                {(currentStage === "Approved" || currentStage === "Rejected" || currentStage === "Query_Raised") && (
+                    <div className={`rounded-md border px-3 py-2 text-xs font-medium text-center ${STAGE_COLORS[currentStage]}`}>
+                        {currentStage === "Approved" && "✓ Application is fully approved. No further actions."}
+                        {currentStage === "Rejected" && "⊘ Application has been removed from the portal."}
+                        {currentStage === "Query_Raised" && "⚠ Query raised to applicant — awaiting resubmission."}
+                    </div>
+                )}
+            </CardContent>
+
+            {selectedAction && !["Approved", "Rejected", "Query_Raised"].includes(currentStage) && (
+                <CardFooter className="bg-muted/30 border-t pt-4">
+                    <Button
+                        className="w-full"
+                        disabled={isSubmitting}
+                        onClick={handleSubmit}
+                    >
+                        {isSubmitting ? "Processing..." : "Confirm & Submit Action"}
+                    </Button>
+                </CardFooter>
+            )}
+        </Card>
+    );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
+
+
+export default function ApplicationReviewPage() {
+    const { id } = useParams<{ id: string }>();
+    const navigate = useNavigate();
+    const { applications, activeUser } = useAuthStore();
+    const [isEditing, setIsEditing] = useState(false);
+    
+    const app = applications.find((a) => a.id === id);
+
+    // Derive stage (1–4) from assigned features; null = Super Admin
+    const userStageNum: number | null = (() => {
+        const s = getUserStage(activeUser.assigned_features);
+        if (!s) return null;
+        if (s === "Stage_1_Processing") return 1;
+        if (s === "Stage_2_Scrutiny") return 2;
+        if (s === "Stage_3_RegNo") return 3;
+        if (s === "Stage_4_Certificate") return 4;
+        return null;
+    })();
+
+    const handleDone = () => navigate("/official/dashboard");
+
+    if (!app) {
+        return (
+            <div className="max-w-7xl mx-auto p-6 flex flex-col items-center gap-4 text-center">
+                <AlertCircle className="h-12 w-12 text-destructive" />
+                <h1 className="text-2xl font-bold">Application Not Found</h1>
+                <p className="text-muted-foreground">Application ID <code>{id}</code> does not exist.</p>
+                <Button variant="outline" onClick={() => navigate("/official/dashboard")}>
+                    <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
+                </Button>
+            </div>
+        );
+    }
 
     return (
         <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+
+            {/* Header */}
             <div className="flex items-center gap-4 mb-2">
                 <Button variant="outline" size="icon" onClick={() => navigate("/official/dashboard")}>
                     <ArrowLeft className="h-4 w-4" />
                 </Button>
                 <div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-wrap">
                         <h1 className="text-3xl font-semibold tracking-tight">Review Application</h1>
-                        <Badge variant="secondary" className="text-sm px-3">{MOCK_DATA.refNumber}</Badge>
+                        <Badge variant="secondary" className="text-sm px-3 font-mono">#{app.appNumber}</Badge>
+                        <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${STAGE_COLORS[app.workflow_stage]}`}>
+                            {STAGE_LABELS[app.workflow_stage]}
+                        </span>
                     </div>
-                    <p className="text-muted-foreground">Perform your scrutiny assessment and push it to the next workflow state.</p>
+                    <p className="text-muted-foreground text-sm mt-0.5">
+                        Viewing as <span className="font-semibold text-foreground">{activeUser.fullName}</span>
+                        {userStageNum && <span className="text-primary font-semibold"> · Stage {userStageNum}</span>}
+                    </p>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 relative">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
 
-                {/* LEFT COLUMN: Read-Only Application Data */}
-                <div className="lg:col-span-2 space-y-6">
-                    <Card className="shadow-sm">
-                        <CardHeader className="bg-muted/30">
-                            <CardTitle className="text-lg">Personal Details</CardTitle>
-                        </CardHeader>
-                        <CardContent className="grid grid-cols-2 gap-4 p-6 text-sm">
-                            <div><span className="text-muted-foreground block mb-1">Full Name</span><span className="font-medium">{MOCK_DATA.personal.fullName}</span></div>
-                            <div><span className="text-muted-foreground block mb-1">Enrolment No.</span><span className="font-medium">{MOCK_DATA.enrolmentNo}</span></div>
-                            <div><span className="text-muted-foreground block mb-1">Date of Birth</span><span className="font-medium">{MOCK_DATA.personal.dob}</span></div>
-                            <div><span className="text-muted-foreground block mb-1">Gender</span><span className="font-medium">{MOCK_DATA.personal.gender}</span></div>
-                            <div className="col-span-2"><span className="text-muted-foreground block mb-1">Aadhaar Verification</span><Badge className="bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 gap-1"><CheckCircle2 className="w-3 h-3" /> {MOCK_DATA.personal.aadhaar}</Badge></div>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="shadow-sm">
-                        <CardHeader className="bg-muted/30">
-                            <CardTitle className="text-lg">Contact Information</CardTitle>
-                        </CardHeader>
-                        <CardContent className="grid grid-cols-2 gap-4 p-6 text-sm">
-                            <div><span className="text-muted-foreground block mb-1">Email Address</span><span className="font-medium">{MOCK_DATA.contact.email}</span></div>
-                            <div><span className="text-muted-foreground block mb-1">Mobile Number</span><span className="font-medium">{MOCK_DATA.contact.mobile}</span></div>
-                            <div className="col-span-2"><span className="text-muted-foreground block mb-1">Declared Address</span><span className="font-medium">{MOCK_DATA.contact.address}</span></div>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="shadow-sm">
-                        <CardHeader className="bg-muted/30">
-                            <CardTitle className="text-lg">Academic Qualifications & Documents</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-6 p-6 text-sm">
-                            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 items-center border-b pb-4">
-                                <div>
-                                    <span className="text-muted-foreground block mb-1">10th Standard</span>
-                                    <span className="font-medium">{MOCK_DATA.academic.tenth}</span>
-                                </div>
-                                <Button variant="outline" size="sm" onClick={handleDocumentClick}><FileText className="w-4 h-4 mr-2" /> View Doc</Button>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 items-center border-b pb-4">
-                                <div>
-                                    <span className="text-muted-foreground block mb-1">12th / Diploma</span>
-                                    <span className="font-medium">{MOCK_DATA.academic.twelfth}</span>
-                                </div>
-                                <Button variant="outline" size="sm" onClick={handleDocumentClick}><FileText className="w-4 h-4 mr-2" /> View Doc</Button>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 items-center">
-                                <div>
-                                    <span className="text-muted-foreground block mb-1">B.Arch Degree</span>
-                                    <span className="font-medium">{MOCK_DATA.academic.barch}</span>
-                                </div>
-                                <Button variant="default" size="sm" className="bg-blue-600 hover:bg-blue-700 mx-0" onClick={handleDocumentClick}><FileText className="w-4 h-4 mr-2 text-white" /> View B.Arch</Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* RIGHT COLUMN: Sticky Action Panel */}
-                <div className="lg:col-span-1">
-                    <Card className="shadow-md border-primary/20 lg:sticky top-[100px]">
-                        <CardHeader className="bg-primary/5 border-b">
-                            <h3 className="font-semibold text-lg flex items-center gap-2">
-                                <AlertCircle className="w-5 h-5 text-primary" />
-                                Workflow Action
-                            </h3>
-                            <CardDescription>Determine the next stage based on your review findings.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="pt-6">
-                            <form id="review-action-form" onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-
-                                <div className="space-y-3">
-                                    <Label className="text-base">Decision *</Label>
-                                    <Controller name="action" control={control} render={({ field }) => (
-                                        <RadioGroup
-                                            onValueChange={field.onChange}
-                                            defaultValue={field.value}
-                                            className="flex flex-col space-y-2 mt-2"
-                                        >
-                                            <div className="flex items-center space-x-2 border p-3 rounded-md hover:bg-muted/50 cursor-pointer">
-                                                <RadioGroupItem value="Forward to HOD" id="act-forward" />
-                                                <Label htmlFor="act-forward" className="flex-1 cursor-pointer font-medium text-blue-700 dark:text-blue-400">Forward to HOD (Pass)</Label>
-                                            </div>
-                                            <div className="flex items-center space-x-2 border p-3 rounded-md hover:bg-muted/50 cursor-pointer">
-                                                <RadioGroupItem value="Approve" id="act-approve" />
-                                                <Label htmlFor="act-approve" className="flex-1 cursor-pointer font-medium text-emerald-700 dark:text-emerald-400">Approve Application</Label>
-                                            </div>
-                                            <div className="flex items-center space-x-2 border p-3 rounded-md hover:bg-muted/50 cursor-pointer">
-                                                <RadioGroupItem value="Raise Query to Applicant" id="act-query" />
-                                                <Label htmlFor="act-query" className="flex-1 cursor-pointer font-medium text-amber-700 dark:text-amber-400">Raise Query</Label>
-                                            </div>
-                                            <div className="flex items-center space-x-2 border p-3 rounded-md hover:bg-muted/50 cursor-pointer">
-                                                <RadioGroupItem value="Revert to Previous Officer" id="act-revert" />
-                                                <Label htmlFor="act-revert" className="flex-1 cursor-pointer font-medium text-orange-700 dark:text-orange-400">Revert to Previous Officer</Label>
-                                            </div>
-                                            <div className="flex items-center space-x-2 border p-3 rounded-md hover:bg-muted/50 cursor-pointer border-destructive/30">
-                                                <RadioGroupItem value="Reject" id="act-reject" />
-                                                <Label htmlFor="act-reject" className="flex-1 cursor-pointer font-medium text-destructive">Reject (Critical Issue)</Label>
-                                            </div>
-                                        </RadioGroup>
-                                    )} />
-                                    {errors.action && <p className="text-destructive text-sm mt-1">{errors.action.message}</p>}
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="remarks">Official Remarks (Audit Log) *</Label>
-                                    <Textarea
-                                        id="remarks"
-                                        placeholder="Provide justification for forwarding, query specifics, or rejection reasons..."
-                                        className="min-h-[120px] resize-none"
-                                        {...register("remarks")}
-                                    />
-                                    <p className="text-xs text-muted-foreground mt-1">These remarks are permanently stored in the audit trail.</p>
-                                    {errors.remarks && <p className="text-destructive text-sm font-medium">{errors.remarks.message}</p>}
-                                </div>
-
-                            </form>
-                        </CardContent>
-                        <CardFooter className="bg-muted/30 pt-4 border-t">
-                            <Button form="review-action-form" type="submit" className="w-full" disabled={isSubmitting}>
-                                {isSubmitting ? "Processing Action..." : "Confirm & Submit Action"}
+                {/* ── LEFT: Application Data ── */}
+                <div className="lg:col-span-2 flex flex-col bg-card rounded-xl border shadow-sm overflow-hidden h-[800px]">
+                    <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/20 flex-shrink-0">
+                        <div className="flex items-center gap-2">
+                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${isEditing ? "bg-amber-100 text-amber-700" : "bg-blue-50 text-blue-700"}`}>
+                                {isEditing ? "✎ Edit Mode" : "👁 View Mode"}
+                            </span>
+                        </div>
+                        {!isEditing ? (
+                            <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setIsEditing(true)}>
+                                <Pencil className="h-3.5 w-3.5" />
+                                Edit Application
                             </Button>
-                        </CardFooter>
-                    </Card>
+                        ) : (
+                            <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setIsEditing(false)}>
+                                <X className="h-3.5 w-3.5" />
+                                Back to View
+                            </Button>
+                        )}
+                    </div>
+                    
+                    <div className="flex-1 min-h-0 flex flex-col overflow-hidden relative">
+                        {isEditing ? (
+                            <ApplicationEditView 
+                                app={app} 
+                                onSaved={() => setIsEditing(false)} 
+                                onCancel={() => setIsEditing(false)} 
+                            />
+                        ) : (
+                            <ScrollArea className="flex-1 h-full">
+                                <div className="p-2 sm:p-4">
+                                    <ApplicationReadView app={app} />
+                                </div>
+                            </ScrollArea>
+                        )}
+                    </div>
                 </div>
 
+                {/* ── RIGHT: Action Panel ── */}
+                <div className="lg:col-span-1">
+                    <ActionPanel
+                        appId={app.id}
+                        appNumber={app.appNumber}
+                        currentStage={app.workflow_stage}
+                        userStage={userStageNum}
+                        onDone={handleDone}
+                    />
+                </div>
             </div>
         </div>
     );

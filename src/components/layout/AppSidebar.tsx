@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAuthStore } from "@/store/authStore";
+import { useAuthStore, STAGE_FEATURES_SET } from "@/store/authStore";
 import { NavLink } from "@/components/NavLink";
 import {
   Sidebar,
@@ -61,7 +61,7 @@ const modules: Module[] = [
     title: "New Registration",
     icon: UserCheck,
     submodules: [
-      { title: "Application Inbox", url: "/official/dashboard" },
+      { title: "Application Register/Status", url: "/official/dashboard" },
       { title: "Edit Application Details", url: "/registration/edit-details" },
       { title: "Returned / Resubmitted", url: "/registration/returned" },
       { title: "Approved Applications", url: "/registration/approved" },
@@ -369,7 +369,17 @@ export function AppSidebar() {
   // Filter a module's submodules: remove titles not in allowedFeatures (except Super Admin)
   const getVisibleSubmodules = (submodules: SubModule[]) => {
     if (isSuperAdmin) return submodules;
-    return submodules.filter((s) => allowedFeatures.has(s.title));
+    
+    // Check if user has any of the 4 stage features
+    const hasAnyStageFeature = Array.from(allowedFeatures).some(f => STAGE_FEATURES_SET.has(f));
+
+    return submodules.filter((s) => {
+      // Special override: the dashboard / inbox link
+      if (s.title === "Application Register/Status") {
+        return hasAnyStageFeature || allowedFeatures.has(s.title);
+      }
+      return allowedFeatures.has(s.title);
+    });
   };
 
   const toggleModule = (moduleName: string) => {

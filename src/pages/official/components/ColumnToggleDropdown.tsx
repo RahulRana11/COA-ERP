@@ -10,6 +10,7 @@ export type ColumnKey =
     | "gender"
     | "nationality"
     | "qualification"
+    | "enrolmentNumber"
     | "appNumber"
     | "dateOfApp"
     | "hardcopyReceivedOn"
@@ -36,6 +37,7 @@ const columnLabels: Record<ColumnKey, string> = {
     gender: "Gender",
     nationality: "Nationality",
     qualification: "Qualification",
+    enrolmentNumber: "Enrolment Number",
     dateOfApp: "Date of Application",
     hardcopyReceivedOn: "Hardcopy received on",
     regNumberDate: "Reg Number & Date",

@@ -32,6 +32,7 @@ export function InboxTable({ data, columns }: InboxTableProps) {
                         {columns.gender && <TableHead>Gender</TableHead>}
                         {columns.nationality && <TableHead>Nationality</TableHead>}
                         {columns.qualification && <TableHead>Qualification</TableHead>}
+                        {columns.enrolmentNumber && <TableHead>Enrolment No.</TableHead>}
                         {columns.dateOfApp && <TableHead>Date of Application</TableHead>}
                         {columns.hardcopyReceivedOn && <TableHead>Hardcopy Received</TableHead>}
                         {columns.regNumberDate && <TableHead>Reg No & Date</TableHead>}
@@ -91,6 +92,7 @@ export function InboxTable({ data, columns }: InboxTableProps) {
                                         </span>
                                     </TableCell>
                                 )}
+                                {columns.enrolmentNumber && <TableCell>{app.enrolmentNumber || "N/A"}</TableCell>}
                                 {columns.dateOfApp && <TableCell>{app.dateOfApp}</TableCell>}
                                 {columns.hardcopyReceivedOn && <TableCell>{app.hardcopyReceivedOn || "N/A"}</TableCell>}
                                 {columns.regNumberDate && (

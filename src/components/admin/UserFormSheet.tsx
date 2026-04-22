@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, ShieldCheck, User, Pencil } from "lucide-react";
+import { Loader2, ShieldCheck, User, Pencil, RadioIcon } from "lucide-react";
 import { toast } from "sonner";
 import {
   Sheet,
@@ -25,6 +25,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Accordion,
   AccordionContent,
@@ -33,89 +34,293 @@ import {
 } from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { useAuthStore, SystemUser } from "@/store/authStore";
+import { useAuthStore, SystemUser, STAGE_FEATURES, STAGE_FEATURES_SET } from "@/store/authStore";
+
+// Application Processing Stages — rendered as a mutually exclusive RadioGroup
+const STAGE_SUBCATEGORY = "Application Processing Stages";
 
 const MODULES_DATA = {
     "Architects": {
       "New Application/Registration": [
-        "Application Register/Status", "Edit Application Details", "Pending Applications", "Approved Applications", "Rejected Applications", "Applications sent for Review to Applicant", "Applications Reverted to Officer", "Offline Application Addition", "Delete Application", "Issue and dispatch certificate and ID Card", "Offline Payment Addition", "Action by President over Registration Application", "New Applicant Login Details", "Escalated Applications"
+        // ★ Stage features (STAGE_SUBCATEGORY) — rendered as RadioGroup (mutually exclusive)
+        ...STAGE_FEATURES,
+        // Other checkbox features
+        "Edit Application Details",
+        "Returned / Resubmitted",
+        "Pending Applications",
+        "Approved Applications",
+        "Rejected Applications",
+        "Applications sent for Review to Applicant",
+        "Applications Reverted to Officer",
+        "Offline Application Addition",
+        "Delete Application",
+        "Certificate & ID Card Issuance",
+        "Issue and dispatch certificate and ID Card",
+        "Offline Payment Addition",
+        "New Applicant Login Details",
+        "Escalated Applications",
       ],
       "Renewal": [
-        "Architect Renewal Directory", "Defaulters", "Restored Architects List", "Inactive Architects", "Inactivate Records", "Renewal Fee Master", "Fine waiver list"
+        "Architect Renewal Directory",
+        "Defaulters",
+        "Restored Architects List",
+        "Inactive Architects",
+        "Inactivate Records",
+        "Renewal Fee Master",
+        "Fine waiver list",
       ],
       "Other Architect Services": [
-        "Architect Title Misuse Request", "Search Architect and Communication", "Architect Photo Signature Updation Request", "View Architect Profile", "Architect Address Change Request", "Architect Login Details", "Print ID Card", "Architect Name Change", "Update Enrolment Number", "Guest User Login Details", "Mobile Updation Requests", "Payment Request Approval- cards", "Aadhar Verify", "Architect ID Card Data", "Print Testimonial", "Architect Details Modification", "Add/Modify Additional Qualification's of Architect", "Modify Architect Communication Details", "Upload Architect Documents", "Approve/Reject Name Change Request", "Approve Certificate Request", "Generate ID Card"
-      ]
+        "Architect Title Misuse Request",
+        "Search Architect and Communication",
+        "Architect Photo Signature Updation Request",
+        "View Architect Profile",
+        "Architect Address Change Request",
+        "Architect Login Details",
+        "Print ID Card",
+        "Architect Name Change",
+        "Update Enrolment Number",
+        "Guest User Login Details",
+        "Mobile Updation Requests",
+        "Payment Request Approval- cards",
+        "Aadhar Verify",
+        "Architect ID Card Data",
+        "Print Testimonial",
+        "Architect Details Modification",
+        "Add/Modify Additional Qualification's of Architect",
+        "Modify Architect Communication Details",
+        "Upload Architect Documents",
+        "Approve/Reject Name Change Request",
+        "Approve Certificate Request",
+        "Generate ID Card",
+      ],
+    },
+    "Core Administration": {
+      "General": [
+        "System & Security",
+        "Organization & Users",
+        "Notifications",
+      ],
+    },
+    "Architect Directory": {
+      "General": [
+        "Search Architect",
+        "View Profile",
+      ],
     },
     "Payment": {
       "General": [
-        "Account Details", "Receive Payment/Add Payment", "Generate DRR", "Print Receipt", "Edit Receipt", "Cancel Receipt", "Bank Receipt", "Head Wise Summary", "Add Foxpro Payment", "Bank Statement", "Merchant Detail", "Bank Information", "Approve Payment", "Add/Modify Postage Advance", "Correct Online Directory Payment Id", "DRR Summary Monthly", "Online Receipt", "School wise Summary", "Approve Payment ICICI"
-      ]
+        "Account Details",
+        "Receive Payment/Add Payment",
+        "Generate DRR",
+        "Print Receipt",
+        "Edit Receipt",
+        "Cancel Receipt",
+        "Bank Receipt",
+        "Head Wise Summary",
+        "Add Foxpro Payment",
+        "Bank Statement",
+        "Merchant Detail",
+        "Bank Information",
+        "Approve Payment",
+        "Add/Modify Postage Advance",
+        "Correct Online Directory Payment Id",
+        "DRR Summary Monthly",
+        "Online Receipt",
+        "School wise Summary",
+        "Approve Payment ICICI",
+      ],
     },
     "Dispatch": {
       "General": [
-        "Dispatch Subject Master", "Status of Dispatch", "Modify Dispatched Cost", "Undelivered Dispatch", "Add/Modify Dispatch", "Dispatch Processing", "Pending for Dispatch", "Dispatched List", "Docket", "Dispatch Slip", "Local District Mapping", "Dispatch Rule Master", "Set Dispatch Rates"
-      ]
+        "Dispatch Subject Master",
+        "Status of Dispatch",
+        "Modify Dispatched Cost",
+        "Undelivered Dispatch",
+        "Add/Modify Dispatch",
+        "Dispatch Processing",
+        "Pending for Dispatch",
+        "Dispatched List",
+        "Docket",
+        "Dispatch Slip",
+        "Local District Mapping",
+        "Dispatch Rule Master",
+        "Set Dispatch Rates",
+      ],
     },
     "Members": {
       "General": [
-        "Important Persons", "Council Member List", "Add/Modify Council Members", "Committee Members Term Details", "Add/Modify Meetings", "Print Addresses", "Generic Report", "View Minutes"
-      ]
+        "Important Persons",
+        "Council Member List",
+        "Add/Modify Council Members",
+        "Committee Members Term Details",
+        "Add/Modify Meetings",
+        "Print Addresses",
+        "Generic Report",
+        "View Minutes",
+      ],
     },
     "Enrolment Data": {
       "General": [
-        "Enrolment Numbers Intimation", "Enrolment Registration Status", "Pending Enrolment List by School", "Enrolment Status Report", "Enrolment Report", "MIS Report", "Aptitude Test Master", "Intake Master", "School Basic", "Add/Modify Intake Details", "Cancel/Restore Intake Data", "View Enrolment Number", "Allot Enrolment Number", "Offline Student Data"
-      ]
+        "Enrolment Numbers Intimation",
+        "Enrolment Registration Status",
+        "Pending Enrolment List by School",
+        "Enrolment Status Report",
+        "Enrolment Report",
+        "MIS Report",
+        "Aptitude Test Master",
+        "Intake Master",
+        "School Basic",
+        "Add/Modify Intake Details",
+        "Cancel/Restore Intake Data",
+        "View Enrolment Number",
+        "Allot Enrolment Number",
+        "Offline Student Data",
+      ],
     },
     "Meetings": {
       "General": [
-        "View Council Minutes/Agenda", "View EC Minutes/Agenda", "Add Meeting", "Add Council Meeting/Agenda", "View Council Meeting", "View EC Meeting"
-      ]
+        "View Council Minutes/Agenda",
+        "View EC Minutes/Agenda",
+        "Add Meeting",
+        "Add Council Meeting/Agenda",
+        "View Council Meeting",
+        "View EC Meeting",
+      ],
     },
     "Empanelment": {
       "General": [
-        "Action on Emapnelment Application", "Search Inspectors", "Active/Inactive Inspector"
-      ]
+        "Action on Emapnelment Application",
+        "Search Inspectors",
+        "Active/Inactive Inspector",
+      ],
     },
     "School Application": {
       "General": [
-        "Faculty Report PG", "Scrutiny Report", "Faculty Report Ug", "Approve Digitally Signed Application", "Search Application", "M.Arch Institution Status", "B.Arch Institution Status", "View Uploaded File", "Upload Annexure", "School Wise Faculty Report - PG", "School Wise Faculty Report - UG", "Inspection Committees Report", "View/ Edit Scrutiny Report Application", "Submit Scrutiny Report Application", "View Scrutiny Application", "Application Scrutiny Report", "Search Faculty", "School Admission intake Report", "Faculty Status Report", "Inspector Appointment Report", "Search School", "Calculate Faculty Ratio", "Application Observation Report", "Submit Scrutiny Report", "Appoint Scrutiny Committee Member", "View Assessment Report", "Delete Inspection Committee", "Send LOI/Inspection Letters", "View/Appoint Inspection Committee", "Delete Application", "Relieve Faculty", "Action on Previous Intake Details", "Manage Academic Calendar", "Modify Ispection Date", "Instiution Head Confirm Register", "Confirm Head of Innstitution", "View Received Applications", "Institution Enrolment Report"
-      ]
+        "Faculty Report PG",
+        "Scrutiny Report",
+        "Faculty Report Ug",
+        "Approve Digitally Signed Application",
+        "Search Application",
+        "M.Arch Institution Status",
+        "B.Arch Institution Status",
+        "View Uploaded File",
+        "Upload Annexure",
+        "School Wise Faculty Report - PG",
+        "School Wise Faculty Report - UG",
+        "Inspection Committees Report",
+        "View/ Edit Scrutiny Report Application",
+        "Submit Scrutiny Report Application",
+        "View Scrutiny Application",
+        "Application Scrutiny Report",
+        "Search Faculty",
+        "School Admission intake Report",
+        "Faculty Status Report",
+        "Inspector Appointment Report",
+        "Search School",
+        "Calculate Faculty Ratio",
+        "Application Observation Report",
+        "Submit Scrutiny Report",
+        "Appoint Scrutiny Committee Member",
+        "View Assessment Report",
+        "Delete Inspection Committee",
+        "Send LOI/Inspection Letters",
+        "View/Appoint Inspection Committee",
+        "Delete Application",
+        "Relieve Faculty",
+        "Action on Previous Intake Details",
+        "Manage Academic Calendar",
+        "Modify Ispection Date",
+        "Instiution Head Confirm Register",
+        "Confirm Head of Innstitution",
+        "View Received Applications",
+        "Institution Enrolment Report",
+      ],
     },
     "Court Case": {
       "General": [
-        "Search Case", "Court Master", "Court Type Master", "Court Fee Master", "Case Type Master", "Lawyer Master", "Add/ Edit Cases"
-      ]
+        "Search Case",
+        "Court Master",
+        "Court Type Master",
+        "Court Fee Master",
+        "Case Type Master",
+        "Lawyer Master",
+        "Add/ Edit Cases",
+      ],
     },
     "RTI": {
       "General": [
-        "CIC Report", "RTI Report", "CIC Appeal", "Create RTI Reply", "RTI Processing", "Add/ Modify Application/Appeal", "RTI Application Form"
-      ]
+        "CIC Report",
+        "RTI Report",
+        "CIC Appeal",
+        "Create RTI Reply",
+        "RTI Processing",
+        "Add/ Modify Application/Appeal",
+        "RTI Application Form",
+      ],
     },
     "Master": {
       "General": [
-        "Cast Master", "Add Year", "School Annexure Mapping", "Add/ Modify Annexure", "Add/ Modify Course Specialization", "Qualification Master", "School faculty Mapping", "Add/ Modify Bank Name", "Add/ Modify Course", "Add/ Modify Districts", "Inspection Committee", "Scrutiny Master", "Scrutiny Eligibility Criteria Mapping", "Scrutiny Manual Criteria Mapping", "Add/ Modify Document", "Qualifying Examination Rule", "Course Fee", "Set Course Eligibility Extension", "Add/ Modify Committee", "University Master", "Architect Head Master"
-      ]
+        "Cast Master",
+        "Add Year",
+        "School Annexure Mapping",
+        "Add/ Modify Annexure",
+        "Add/ Modify Course Specialization",
+        "Qualification Master",
+        "School faculty Mapping",
+        "Add/ Modify Bank Name",
+        "Add/ Modify Course",
+        "Add/ Modify Districts",
+        "Inspection Committee",
+        "Scrutiny Master",
+        "Scrutiny Eligibility Criteria Mapping",
+        "Scrutiny Manual Criteria Mapping",
+        "Add/ Modify Document",
+        "Qualifying Examination Rule",
+        "Course Fee",
+        "Set Course Eligibility Extension",
+        "Add/ Modify Committee",
+        "University Master",
+        "Architect Head Master",
+      ],
     },
     "Complaints of Architect": {
       "General": [
-        "Add Offline Complaints", "Action On Complaints", "Complaints List", "Complaints Against Fraud Architects", "Complaints Under Unregistered Person", "Show Cause List"
-      ]
-    }
+        "Add Offline Complaints",
+        "Action On Complaints",
+        "Complaints List",
+        "Complaints Against Fraud Architects",
+        "Complaints Under Unregistered Person",
+        "Show Cause List",
+      ],
+    },
+    "Reporting & Analytics": {
+      "General": [
+        "Operational Reports",
+        "Custom Reports",
+        "Dashboards",
+      ],
+    },
+    "Utilities & Integration": {
+      "General": [
+        "Forms & Templates",
+        "Data Operations",
+        "Integrations",
+      ],
+    },
 };
 
 const ROLE_TEMPLATES: Record<string, string[]> = {
     Clerk: [
-        "Application Register/Status", "Offline Application Addition", "Generate ID Card", "Search Architect and Communication"
+        "Stage 1: Application Processing", "Offline Application Addition", "Generate ID Card", "Search Architect and Communication"
     ],
     HOD: [
-        "Application Register/Status", "Edit Application Details", "Approved Applications", "Rejected Applications", "Issue and dispatch certificate and ID Card", "Defaulters", "Inactive Architects"
+        "Stage 2: Application Under Scrutiny", "Edit Application Details", "Approved Applications", "Rejected Applications", "Issue and dispatch certificate and ID Card", "Defaulters", "Inactive Architects"
     ],
     Registrar: [
-        "Application Register/Status", "Edit Application Details", "Approved Applications", "Rejected Applications", "Issue and dispatch certificate and ID Card", "Defaulters", "Inactive Architects", "Architect Renewal Directory", "Renewal Fee Master", "Action by President over Registration Application", "Account Details", "Generate DRR"
+        "Stage 3: Generate Registration Number", "Edit Application Details", "Approved Applications", "Rejected Applications", "Issue and dispatch certificate and ID Card", "Defaulters", "Inactive Architects", "Architect Renewal Directory", "Renewal Fee Master", "Account Details", "Generate DRR"
     ],
     President: [
-        "Action by President over Registration Application", "Application Register/Status", "Approved Applications", "Rejected Applications", "Architect Renewal Directory", "Account Details", "Generate DRR"
+        "Stage 4: Generate Certificate", "Approved Applications", "Rejected Applications", "Architect Renewal Directory", "Account Details", "Generate DRR"
     ],
     "Super Admin": Object.values(MODULES_DATA).flatMap((sub) => Object.values(sub).flat()),
 };
@@ -123,7 +328,10 @@ const ROLE_TEMPLATES: Record<string, string[]> = {
 const formSchema = z.object({
   fullName: z.string().min(2, "Name must be at least 2 characters"),
   emailAddress: z.string().email("Invalid email address format"),
-  mobileNumber: z.string().min(10, "Mobile number must be at least 10 digits"),
+  mobileNumber: z.string().refine(
+    (val) => val.length === 0 || val.length >= 10,
+    { message: "Mobile number must be at least 10 digits" }
+  ),
   designation: z.string().min(2, "Designation is required"),
   department: z.string().min(2, "Department is required"),
   role: z.string().min(1, "Please select a base role template"),
@@ -147,6 +355,7 @@ export function UserFormSheet({ open, onOpenChange, onAddUser, editUser }: UserF
   const isEditMode = !!editUser;
   // Track the previous role to suppress auto-fill when in edit mode (user already has explicit features)
   const prevRoleRef = useRef<string>("");
+  const formRef = useRef<HTMLFormElement>(null);
 
   const form = useForm<OfficialUserFormValues>({
     resolver: zodResolver(formSchema),
@@ -164,6 +373,9 @@ export function UserFormSheet({ open, onOpenChange, onAddUser, editUser }: UserF
   // Pre-populate form when sheet opens in edit mode
   useEffect(() => {
     if (open && editUser) {
+      // CRITICAL: set the guard BEFORE form.reset() so the role-watcher
+      // effect sees prevRoleRef === selectedRole and skips the template overwrite.
+      prevRoleRef.current = editUser.base_role;
       form.reset({
         fullName: editUser.fullName,
         emailAddress: editUser.emailAddress,
@@ -173,13 +385,12 @@ export function UserFormSheet({ open, onOpenChange, onAddUser, editUser }: UserF
         role: editUser.base_role,
         selectedFeatureIds: [...editUser.assigned_features],
       });
-      prevRoleRef.current = editUser.base_role;
     } else if (open && !editUser) {
+      prevRoleRef.current = "";
       form.reset({
         fullName: "", emailAddress: "", mobileNumber: "",
         designation: "", department: "", role: "", selectedFeatureIds: [],
       });
-      prevRoleRef.current = "";
     }
   }, [open, editUser]);
 
@@ -266,7 +477,7 @@ export function UserFormSheet({ open, onOpenChange, onAddUser, editUser }: UserF
 
         <div className="flex-1 overflow-y-auto p-6">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+            <form ref={formRef} onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
 
               {/* Section A: Basic Details — hidden in edit mode since identity can't change */}
               {!isEditMode && (
@@ -428,39 +639,94 @@ export function UserFormSheet({ open, onOpenChange, onAddUser, editUser }: UserF
                             </div>
 
                             <AccordionContent className="p-0">
-                              {Object.entries(subModules).map(([subCat, features]) => (
-                                <div key={subCat} className="border-b last:border-0 border-muted-foreground/10 px-6 py-4">
-                                  <h5 className="font-bold text-sm mb-3 text-primary tracking-tight">
-                                    {subCat === "General" ? "Standard Functions" : subCat}
-                                  </h5>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2.5">
-                                    {features.map((feature) => (
-                                      <FormField
-                                        key={feature}
-                                        control={form.control}
-                                        name="selectedFeatureIds"
-                                        render={({ field }) => (
-                                          <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-2.5 hover:bg-muted/40 transition-colors shadow-sm">
-                                            <FormControl>
-                                              <Checkbox
-                                                checked={field.value?.includes(feature)}
-                                                onCheckedChange={(checked) => {
-                                                  return checked
-                                                    ? field.onChange([...field.value, feature])
-                                                    : field.onChange(field.value?.filter((v) => v !== feature));
-                                                }}
-                                              />
-                                            </FormControl>
-                                            <FormLabel className="font-normal text-xs leading-tight cursor-pointer">
-                                              {feature}
-                                            </FormLabel>
-                                          </FormItem>
-                                        )}
-                                      />
-                                    ))}
+                              {Object.entries(subModules).map(([subCat, features]) => {
+                                // Split features into stage group and regular checkboxes
+                                const stageFeats = features.filter((f) => STAGE_FEATURES_SET.has(f));
+                                const regularFeats = features.filter((f) => !STAGE_FEATURES_SET.has(f));
+                                const currentStageValue = form.watch("selectedFeatureIds").find((v) => STAGE_FEATURES_SET.has(v)) ?? "";
+
+                                return (
+                                  <div key={subCat} className="border-b last:border-0 border-muted-foreground/10 px-6 py-4">
+                                    <h5 className="font-bold text-sm mb-3 text-primary tracking-tight">
+                                      {subCat === "General" ? "Standard Functions" : subCat}
+                                    </h5>
+
+                                    {/* ══ RadioGroup for mutually exclusive stage permissions ══ */}
+                                    {stageFeats.length > 0 && (
+                                      <div className="mb-4">
+                                        <div className="flex items-center gap-1.5 mb-2">
+                                          <RadioIcon className="h-3 w-3 text-primary" />
+                                          <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                                            Application Processing Stage — Select ONE
+                                          </p>
+                                        </div>
+                                        <RadioGroup
+                                          value={currentStageValue}
+                                          onValueChange={(newStage) => {
+                                            const current = form.getValues("selectedFeatureIds");
+                                            // Remove all stage features, then add the selected one
+                                            const withoutStages = current.filter((f) => !STAGE_FEATURES_SET.has(f));
+                                            form.setValue(
+                                              "selectedFeatureIds",
+                                              newStage ? [...withoutStages, newStage] : withoutStages,
+                                              { shouldDirty: true, shouldValidate: true }
+                                            );
+                                          }}
+                                          className="space-y-1.5"
+                                        >
+                                          {/* None option */}
+                                          <div className="flex items-center gap-2.5 rounded-md border p-2.5 hover:bg-muted/40 transition-colors">
+                                            <RadioGroupItem value="" id="stage-none" />
+                                            <label htmlFor="stage-none" className="text-xs text-muted-foreground italic cursor-pointer">
+                                              None (no stage access)
+                                            </label>
+                                          </div>
+                                          {stageFeats.map((feat, idx) => (
+                                            <div key={feat} className={`flex items-center gap-2.5 rounded-md border p-2.5 hover:bg-muted/40 transition-colors ${
+                                              currentStageValue === feat ? "border-primary bg-primary/5" : ""
+                                            }`}>
+                                              <RadioGroupItem value={feat} id={`stage-${idx}`} />
+                                              <label htmlFor={`stage-${idx}`} className="text-xs font-medium cursor-pointer leading-tight">
+                                                {feat}
+                                              </label>
+                                            </div>
+                                          ))}
+                                        </RadioGroup>
+                                      </div>
+                                    )}
+
+                                    {/* ══ Regular checkboxes ══ */}
+                                    {regularFeats.length > 0 && (
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2.5">
+                                        {regularFeats.map((feature) => (
+                                          <FormField
+                                            key={feature}
+                                            control={form.control}
+                                            name="selectedFeatureIds"
+                                            render={({ field }) => (
+                                              <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-2.5 hover:bg-muted/40 transition-colors shadow-sm">
+                                                <FormControl>
+                                                  <Checkbox
+                                                    checked={field.value?.includes(feature)}
+                                                    onCheckedChange={(checked) => {
+                                                      return checked
+                                                        ? field.onChange([...field.value, feature])
+                                                        : field.onChange(field.value?.filter((v) => v !== feature));
+                                                    }}
+                                                  />
+                                                </FormControl>
+                                                <FormLabel className="font-normal text-xs leading-tight cursor-pointer">
+                                                  {feature}
+                                                </FormLabel>
+                                              </FormItem>
+                                            )}
+                                          />
+                                        ))}
+                                      </div>
+                                    )}
                                   </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </AccordionContent>
                           </AccordionItem>
                         );
@@ -470,9 +736,7 @@ export function UserFormSheet({ open, onOpenChange, onAddUser, editUser }: UserF
                 </div>
               </div>
 
-              <div id="form-actions" className="hidden">
-                <Button type="submit" id="hidden-submit-btn">Submit</Button>
-              </div>
+
             </form>
           </Form>
         </div>
@@ -481,7 +745,7 @@ export function UserFormSheet({ open, onOpenChange, onAddUser, editUser }: UserF
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             type="button"
-            onClick={() => document.getElementById("hidden-submit-btn")?.click()}
+            onClick={() => formRef.current?.requestSubmit()}
             disabled={isSubmitting}
             className="min-w-[220px]"
           >

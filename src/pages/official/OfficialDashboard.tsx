@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Filter, Search, ArrowRight, XCircle, AlertTriangle, CheckSquare2, Eye } from "lucide-react";
+import { Filter, Search, ArrowRight, XCircle, AlertTriangle, CheckSquare2 } from "lucide-react";
 import { useForm, FormProvider, useWatch } from "react-hook-form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -8,28 +8,22 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
+    Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
 import { FilterSheet } from "./components/FilterSheet";
-import { ColumnToggleDropdown, ColumnKey } from "./components/ColumnToggleDropdown";
 import { ApplicationViewSheet } from "./components/ApplicationViewSheet";
-import { useAuthStore, ROLE_TO_STAGE, NEXT_STAGE, WorkflowStage } from "@/store/authStore";
+import {
+    useAuthStore, getUserStage, STAGE_LABELS, STAGE_COLORS,
+    WorkflowStage, ApplicationRecord,
+} from "@/store/authStore";
+import { useNavigate } from "react-router-dom";
+
+// ── Debounce hook ─────────────────────────────────────────────────────────────
 
 function useDebounce<T>(value: T, delay: number): T {
     const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -40,75 +34,109 @@ function useDebounce<T>(value: T, delay: number): T {
     return debouncedValue;
 }
 
-const STAGE_LABELS: Record<string, string> = {
-    Pending_Clerk: "Pending — Clerk",
-    Pending_HOD: "Pending — HOD",
-    Pending_Registrar: "Pending — Registrar",
-    Pending_President: "Pending — President",
-    Approved: "Approved",
-    Rejected: "Rejected",
-};
+// ── Per-stage tab definition ──────────────────────────────────────────────────
 
-const STAGE_COLORS: Record<string, string> = {
-    Pending_Clerk: "bg-yellow-100 text-yellow-800 border-yellow-300",
-    Pending_HOD: "bg-orange-100 text-orange-800 border-orange-300",
-    Pending_Registrar: "bg-blue-100 text-blue-800 border-blue-300",
-    Pending_President: "bg-purple-100 text-purple-800 border-purple-300",
-    Approved: "bg-green-100 text-green-800 border-green-300",
-    Rejected: "bg-red-100 text-red-800 border-red-300",
-};
+interface TabDef {
+    key: string;
+    label: string;
+    /** workflow_stages that appear in this tab */
+    stages: WorkflowStage[];
+    /** extra filter: only reverted apps (audit trail has a "Reverted" entry) */
+    revertedOnly?: boolean;
+    /** extra filter: exclude apps that were reverted (fresh submissions only) */
+    freshOnly?: boolean;
+}
+
+function getTabsForStage(stage: WorkflowStage | null): TabDef[] {
+    switch (stage) {
+        case "Stage_1_Processing":
+            return [
+                { key: "pending", label: "Pending New Applications", stages: ["Stage_1_Processing"], freshOnly: true },
+                { key: "review",  label: "Review Applications",     stages: ["Stage_1_Processing"], revertedOnly: true },
+                { key: "approved", label: "Approved",               stages: ["Approved"] },
+                { key: "removed",  label: "Removed",                stages: ["Rejected"] },
+            ];
+        case "Stage_2_Scrutiny":
+            return [
+                { key: "pending", label: "Pending Scrutiny",   stages: ["Stage_2_Scrutiny"], freshOnly: true },
+                { key: "review",  label: "Review Applications",     stages: ["Stage_2_Scrutiny"], revertedOnly: true },
+                { key: "query",   label: "Query Raised",        stages: ["Query_Raised"] },
+                { key: "removed", label: "Removed",             stages: ["Rejected"] },
+            ];
+        case "Stage_3_RegNo":
+            return [
+                { key: "pending",  label: "Pending Reg. No.",  stages: ["Stage_3_RegNo"] },
+                { key: "approved", label: "Approved",          stages: ["Approved"] },
+                { key: "removed",  label: "Removed",           stages: ["Rejected"] },
+            ];
+        case "Stage_4_Certificate":
+            return [
+                { key: "pending",  label: "Pending Certificate", stages: ["Stage_4_Certificate"] },
+                { key: "approved", label: "Approved",            stages: ["Approved"] },
+                { key: "removed",  label: "Removed",             stages: ["Rejected"] },
+            ];
+        default:
+            // Super Admin — sees everything
+            return [
+                { key: "all",      label: "All Active",  stages: ["Stage_1_Processing","Stage_2_Scrutiny","Stage_3_RegNo","Stage_4_Certificate","Query_Raised"] },
+                { key: "approved", label: "Approved",    stages: ["Approved"] },
+                { key: "removed",  label: "Removed",     stages: ["Rejected"] },
+            ];
+    }
+}
+
+/** Determine if an app was reverted (has at least one "Reverted" audit entry) */
+function wasReverted(app: ApplicationRecord) {
+    return app.audit_trail.some((e) => e.action.startsWith("Reverted"));
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 export default function OfficialDashboard() {
-    const { activeUser, applications, forwardApplication, rejectApplication } = useAuthStore();
-    const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
-    const [activeTab, setActiveTab] = useState("inbox");
-    const [confirmForward, setConfirmForward] = useState<string | null>(null);
-    const [confirmReject, setConfirmReject] = useState<string | null>(null);
-    const [confirmBulkForward, setConfirmBulkForward] = useState(false);
-    const [confirmBulkReject, setConfirmBulkReject] = useState(false);
-    const [viewingApp, setViewingApp] = useState<typeof applications[number] | null>(null);
+    const navigate = useNavigate();
+    const { activeUser, applications, forwardApplication, removeFromPortal } = useAuthStore();
 
-    // Selection state
+    const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState("pending");
+    const [confirmForwardId, setConfirmForwardId] = useState<string | null>(null);
+    const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+    const [confirmBulkForward, setConfirmBulkForward] = useState(false);
+    const [confirmBulkRemove, setConfirmBulkRemove] = useState(false);
+    const [viewingApp, setViewingApp] = useState<ApplicationRecord | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-    const [columns, setColumns] = useState<Record<ColumnKey, boolean>>({
-        appNumber: true,
-        appMode: true,
-        paymentStatus: false,
-        nameDob: true,
-        photoSign: false,
-        gender: false,
-        nationality: false,
-        qualification: true,
-        dateOfApp: true,
-        hardcopyReceivedOn: false,
-        regNumberDate: false,
-        residentialAddress: false,
-        professionalAddress: false,
-        communicationAddress: false,
-        presidentApproveOn: false,
-        status: true,
-        additionalQualification: false,
-        actions: true,
-    });
+    // ── Stage detection ──────────────────────────────────────────────────────
+    const userStage = useMemo(
+        () => getUserStage(activeUser.assigned_features),
+        [activeUser]
+    );
 
+    const userStageNum: number | null = useMemo(() => {
+        if (userStage === "Stage_1_Processing") return 1;
+        if (userStage === "Stage_2_Scrutiny")   return 2;
+        if (userStage === "Stage_3_RegNo")      return 3;
+        if (userStage === "Stage_4_Certificate") return 4;
+        return null;
+    }, [userStage]);
+
+    const tabs = useMemo(() => getTabsForStage(userStage), [userStage]);
+
+    // Reset to first tab when user changes
+    useEffect(() => {
+        setActiveTab(tabs[0]?.key ?? "pending");
+    }, [activeUser.id]);
+
+    // ── Filters ──────────────────────────────────────────────────────────────
     const formMethods = useForm({
         defaultValues: {
             globalSearch: "",
             firstName: "",
-            middleName: "",
-            lastName: "",
             appMode: "Both",
             paymentStatus: "Both",
-            submitStatus: "Both",
             appNoFrom: "",
             appNoTo: "",
-            regNoFrom: "",
-            regNoTo: "",
             appDateFrom: null as Date | null,
             appDateTo: null as Date | null,
-            regDurationFrom: null as Date | null,
-            regDurationTo: null as Date | null,
             appStatus: "All",
         },
     });
@@ -116,26 +144,21 @@ export default function OfficialDashboard() {
     const filterValues = useWatch({ control: formMethods.control });
     const debouncedFilters = useDebounce(filterValues, 300);
 
-    // Determine which stages this user can see
-    const visibleStages: WorkflowStage[] = useMemo(() => {
-        return ROLE_TO_STAGE[activeUser.base_role] ?? ROLE_TO_STAGE["Super Admin"];
-    }, [activeUser]);
-
+    // ── Filtered data ─────────────────────────────────────────────────────────
     const filteredData = useMemo(() => {
-        return applications.filter((app) => {
-            // Exclude unpaid applications
-            if (app.paymentStatus === "Unpaid") return false;
+        const currentTab = tabs.find((t) => t.key === activeTab) ?? tabs[0];
+        if (!currentTab) return [];
 
-            // Tab filter
-            if (activeTab === "inbox") {
-                // Exclude Approved from inbox
-                if (app.workflow_stage === "Approved") return false;
-                if (!visibleStages.includes(app.workflow_stage)) return false;
-            } else if (activeTab === "approved") {
-                if (app.workflow_stage !== "Approved") return false;
-            } else if (activeTab === "rejected") {
-                if (app.workflow_stage !== "Rejected") return false;
-            }
+        return applications.filter((app) => {
+            // Stage filter
+            if (!currentTab.stages.includes(app.workflow_stage)) return false;
+
+            // Fresh / reverted sub-filter (Stage 1 tabs)
+            if (currentTab.freshOnly && wasReverted(app)) return false;
+            if (currentTab.revertedOnly && !wasReverted(app)) return false;
+
+            // Unpaid filter (don't show in stage 1 pending)
+            if (currentTab.key === "pending" && userStage === "Stage_1_Processing" && app.paymentStatus === "Unpaid") return false;
 
             // Global search
             if (debouncedFilters.globalSearch) {
@@ -156,74 +179,61 @@ export default function OfficialDashboard() {
             }
             return true;
         });
-    }, [applications, debouncedFilters, activeTab, visibleStages]);
+    }, [applications, debouncedFilters, activeTab, tabs, userStage]);
 
-    // Reset selections when filters/tab change
-    useEffect(() => {
-        setSelectedIds(new Set());
-    }, [activeTab, debouncedFilters]);
+    // Reset selections on tab / filter change
+    useEffect(() => { setSelectedIds(new Set()); }, [activeTab, debouncedFilters]);
 
     // ── Selection helpers ────────────────────────────────────────────────────
     const allVisibleIds = filteredData.map((a) => a.id);
-    const allSelected = allVisibleIds.length > 0 && allVisibleIds.every((id) => selectedIds.has(id));
+    const allSelected  = allVisibleIds.length > 0 && allVisibleIds.every((id) => selectedIds.has(id));
     const someSelected = selectedIds.size > 0 && !allSelected;
 
     const toggleSelectAll = () => {
-        if (allSelected) {
-            setSelectedIds(new Set());
-        } else {
-            setSelectedIds(new Set(allVisibleIds));
-        }
+        if (allSelected) setSelectedIds(new Set());
+        else setSelectedIds(new Set(allVisibleIds));
     };
-
     const toggleSelect = (id: string) => {
         setSelectedIds((prev) => {
             const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
+            if (next.has(id)) next.delete(id); else next.add(id);
             return next;
         });
     };
 
+    // ── Tab: is this an actionable (pending) tab? ────────────────────────────
+    const currentTab = tabs.find((t) => t.key === activeTab) ?? tabs[0];
+    const isInboxTab = currentTab?.key !== "approved" && currentTab?.key !== "removed";
+
     // ── Single-row actions ───────────────────────────────────────────────────
     const handleForward = (appId: string) => {
         const app = applications.find((a) => a.id === appId);
-        forwardApplication(appId);
-        setConfirmForward(null);
-        if (!app) return;
-        const next = NEXT_STAGE[app.workflow_stage];
-        toast.success("Moved for Scrutiny", {
-            description: `Application #${app.appNumber} → ${STAGE_LABELS[next] ?? "Next Stage"}`,
-        });
+        forwardApplication(appId, activeUser.fullName);
+        setConfirmForwardId(null);
+        toast.success(`Application #${app?.appNumber} forwarded.`);
     };
 
-    const handleReject = (appId: string) => {
+    const handleRemove = (appId: string) => {
         const app = applications.find((a) => a.id === appId);
-        rejectApplication(appId);
-        setConfirmReject(null);
-        toast.error("Removed from Portal", {
-            description: `Application #${app?.appNumber} has been removed.`,
-        });
+        removeFromPortal(appId, activeUser.fullName);
+        setConfirmRemoveId(null);
+        toast.error(`Application #${app?.appNumber} removed from portal.`);
     };
 
     // ── Bulk actions ─────────────────────────────────────────────────────────
     const handleBulkForward = () => {
-        const ids = Array.from(selectedIds);
-        ids.forEach((id) => forwardApplication(id));
+        Array.from(selectedIds).forEach((id) => forwardApplication(id, activeUser.fullName));
         setConfirmBulkForward(false);
         setSelectedIds(new Set());
-        toast.success(`${ids.length} applications moved for scrutiny`);
+        toast.success(`${selectedIds.size} applications forwarded.`);
     };
 
-    const handleBulkReject = () => {
-        const ids = Array.from(selectedIds);
-        ids.forEach((id) => rejectApplication(id));
-        setConfirmBulkReject(false);
+    const handleBulkRemove = () => {
+        Array.from(selectedIds).forEach((id) => removeFromPortal(id, activeUser.fullName));
+        setConfirmBulkRemove(false);
         setSelectedIds(new Set());
-        toast.error(`${ids.length} applications removed from portal`);
+        toast.error(`${selectedIds.size} applications removed.`);
     };
-
-    const canForwardStage = (stage: WorkflowStage) => NEXT_STAGE[stage] !== undefined;
 
     return (
         <FormProvider {...formMethods}>
@@ -237,6 +247,13 @@ export default function OfficialDashboard() {
                             Viewing as <span className="font-semibold text-foreground">{activeUser.fullName}</span>
                             {" "}·{" "}
                             <span className="font-semibold text-primary">{activeUser.base_role}</span>
+                            {userStageNum && (
+                                <span className={`ml-2 text-xs font-bold px-2 py-0.5 rounded-full border ${
+                                    STAGE_COLORS[userStage!]
+                                }`}>
+                                    Stage {userStageNum}
+                                </span>
+                            )}
                         </p>
                     </div>
 
@@ -249,7 +266,6 @@ export default function OfficialDashboard() {
                                 {...formMethods.register("globalSearch")}
                             />
                         </div>
-                        <ColumnToggleDropdown columns={columns} setColumns={setColumns} />
                         <Button onClick={() => setIsFilterSheetOpen(true)} variant="secondary">
                             <Filter className="mr-2 h-4 w-4" />
                             Filters
@@ -257,34 +273,41 @@ export default function OfficialDashboard() {
                     </div>
                 </div>
 
-                {/* Visible stage context pills */}
-                <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs text-muted-foreground font-medium">Your Inbox Shows:</span>
-                    {visibleStages.map((stage) => (
-                        <span
-                            key={stage}
-                            className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${STAGE_COLORS[stage]}`}
-                        >
-                            {STAGE_LABELS[stage]}
+                {/* Stage context pill */}
+                {userStage && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-muted-foreground font-medium">Your Active Stage:</span>
+                        <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${STAGE_COLORS[userStage]}`}>
+                            {STAGE_LABELS[userStage]}
                         </span>
-                    ))}
-                </div>
+                    </div>
+                )}
 
-                {/* Tabs */}
+                {/* Dynamic Tabs */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                    <TabsList className="grid w-full grid-cols-3 max-w-md">
-                        <TabsTrigger value="inbox">
-                            Inbox{" "}
-                            <Badge variant="secondary" className="ml-1.5 text-xs">
-                                {applications.filter((a) => a.paymentStatus !== "Unpaid" && visibleStages.includes(a.workflow_stage)).length}
-                            </Badge>
-                        </TabsTrigger>
-                        <TabsTrigger value="approved">Approved</TabsTrigger>
-                        <TabsTrigger value="rejected">Removed</TabsTrigger>
+                    <TabsList className={`grid w-full max-w-2xl`} style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)` }}>
+                        {tabs.map((tab) => {
+                            const count = applications.filter((app) => {
+                                if (!tab.stages.includes(app.workflow_stage)) return false;
+                                if (tab.freshOnly && wasReverted(app)) return false;
+                                if (tab.revertedOnly && !wasReverted(app)) return false;
+                                return true;
+                            }).length;
+                            return (
+                                <TabsTrigger key={tab.key} value={tab.key} className="text-xs">
+                                    {tab.label}
+                                    {count > 0 && (
+                                        <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0">
+                                            {count}
+                                        </Badge>
+                                    )}
+                                </TabsTrigger>
+                            );
+                        })}
                     </TabsList>
                 </Tabs>
 
-                {/* Bulk action toolbar — appears when items are selected */}
+                {/* Bulk action toolbar */}
                 {selectedIds.size > 0 && (
                     <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/5 border border-primary/20 rounded-lg">
                         <CheckSquare2 className="h-4 w-4 text-primary" />
@@ -292,33 +315,21 @@ export default function OfficialDashboard() {
                             {selectedIds.size} application{selectedIds.size > 1 ? "s" : ""} selected
                         </span>
                         <div className="flex-1" />
-                        {activeTab === "inbox" && (
+                        {isInboxTab && (
                             <>
-                                <Button
-                                    size="sm"
-                                    className="h-8 gap-1.5 text-xs"
-                                    onClick={() => setConfirmBulkForward(true)}
-                                >
-                                    <ArrowRight className="h-3.5 w-3.5" />
-                                    Move Selected for Scrutiny
+                                <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setConfirmBulkForward(true)}>
+                                    <ArrowRight className="h-3.5 w-3.5" /> Forward Selected
                                 </Button>
                                 <Button
-                                    size="sm"
-                                    variant="outline"
+                                    size="sm" variant="outline"
                                     className="h-8 gap-1.5 text-xs text-destructive border-destructive/30 hover:bg-destructive/10"
-                                    onClick={() => setConfirmBulkReject(true)}
+                                    onClick={() => setConfirmBulkRemove(true)}
                                 >
-                                    <XCircle className="h-3.5 w-3.5" />
-                                    Remove Selected from Portal
+                                    <XCircle className="h-3.5 w-3.5" /> Remove Selected
                                 </Button>
                             </>
                         )}
-                        <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 text-xs text-muted-foreground"
-                            onClick={() => setSelectedIds(new Set())}
-                        >
+                        <Button size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground" onClick={() => setSelectedIds(new Set())}>
                             Clear
                         </Button>
                     </div>
@@ -329,46 +340,44 @@ export default function OfficialDashboard() {
                     <Table>
                         <TableHeader className="bg-muted/40">
                             <TableRow>
-                                {/* Select All checkbox */}
                                 <TableHead className="w-10 pr-0">
                                     <Checkbox
                                         checked={allSelected}
-                                        ref={(el) => {
-                                            if (el) (el as any).indeterminate = someSelected;
-                                        }}
+                                        ref={(el) => { if (el) (el as any).indeterminate = someSelected; }}
                                         onCheckedChange={toggleSelectAll}
                                         aria-label="Select all"
                                     />
                                 </TableHead>
                                 <TableHead className="font-semibold">App No.</TableHead>
-                                <TableHead className="font-semibold">Applicant Name</TableHead>
+                                <TableHead className="font-semibold">Applicant</TableHead>
                                 <TableHead className="font-semibold">Qualification</TableHead>
+                                <TableHead className="font-semibold">Enrolment No.</TableHead>
                                 <TableHead className="font-semibold">Mode</TableHead>
-                                <TableHead className="font-semibold">Date</TableHead>
+                                <TableHead className="font-semibold">Stage</TableHead>
                                 <TableHead className="font-semibold text-center">Details</TableHead>
-                                <TableHead className="font-semibold text-right">Actions</TableHead>
+                                {isInboxTab && <TableHead className="font-semibold text-right">Quick Actions</TableHead>}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {filteredData.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={7} className="h-32 text-center">
+                                    <TableCell colSpan={9} className="h-32 text-center">
                                         <div className="flex flex-col items-center gap-2 text-muted-foreground">
                                             <AlertTriangle className="h-8 w-8 text-muted-foreground/50" />
-                                            <p className="font-medium">No applications in your inbox</p>
-                                            <p className="text-xs">Only paid applications assigned to your tier appear here.</p>
+                                            <p className="font-medium">No applications in this tab</p>
+                                            <p className="text-xs">Applications matching this stage will appear here.</p>
                                         </div>
                                     </TableCell>
                                 </TableRow>
                             ) : (
                                 filteredData.map((app) => {
                                     const isSelected = selectedIds.has(app.id);
+                                    const isReverted = wasReverted(app) && userStage === "Stage_1_Processing";
                                     return (
                                         <TableRow
                                             key={app.id}
-                                            className={`hover:bg-muted/30 transition-colors ${isSelected ? "bg-primary/5 hover:bg-primary/10" : ""}`}
+                                            className={`hover:bg-muted/30 transition-colors ${isSelected ? "bg-primary/5 hover:bg-primary/10" : ""} ${isReverted ? "border-l-2 border-l-orange-400" : ""}`}
                                         >
-                                            {/* Row checkbox */}
                                             <TableCell className="pr-0 w-10">
                                                 <Checkbox
                                                     checked={isSelected}
@@ -384,45 +393,43 @@ export default function OfficialDashboard() {
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-xs max-w-[180px] truncate">{app.qualification}</TableCell>
+                                            <TableCell className="text-xs font-medium">{app.enrolmentNumber || "—"}</TableCell>
                                             <TableCell>
                                                 <Badge variant="outline" className="text-xs">{app.appMode}</Badge>
                                             </TableCell>
-                                            <TableCell className="text-xs text-muted-foreground">{app.dateOfApp}</TableCell>
+                                            <TableCell>
+                                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${STAGE_COLORS[app.workflow_stage]}`}>
+                                                    {STAGE_LABELS[app.workflow_stage]}
+                                                </span>
+                                            </TableCell>
                                             <TableCell className="text-center">
                                                 <Button
-                                                    size="sm"
-                                                    variant="outline"
+                                                    size="sm" variant="outline"
                                                     className="h-7 px-3 text-xs font-medium gap-1.5 hover:bg-primary hover:text-primary-foreground transition-colors"
-                                                    onClick={() => setViewingApp(app)}
+                                                    onClick={() => navigate(`/official/review/${app.id}`)}
                                                 >
-                                                    View
+                                                    View / Process
                                                 </Button>
                                             </TableCell>
-                                            <TableCell className="text-right">
-                                                <div className="flex items-center justify-end gap-2">
-                                                    {activeTab === "inbox" && canForwardStage(app.workflow_stage) && (
+                                            {isInboxTab && (
+                                                <TableCell className="text-right">
+                                                    <div className="flex items-center justify-end gap-2">
                                                         <Button
-                                                            size="sm"
-                                                            className="h-7 text-xs gap-1"
-                                                            onClick={() => setConfirmForward(app.id)}
+                                                            size="sm" className="h-7 text-xs gap-1"
+                                                            onClick={() => setConfirmForwardId(app.id)}
                                                         >
-                                                            Move for Scrutiny
-                                                            <ArrowRight className="h-3 w-3" />
+                                                            Forward <ArrowRight className="h-3 w-3" />
                                                         </Button>
-                                                    )}
-                                                    {activeTab === "inbox" && (
                                                         <Button
-                                                            size="sm"
-                                                            variant="outline"
+                                                            size="sm" variant="outline"
                                                             className="h-7 text-xs gap-1 text-destructive border-destructive/30 hover:bg-destructive/10"
-                                                            onClick={() => setConfirmReject(app.id)}
+                                                            onClick={() => setConfirmRemoveId(app.id)}
                                                         >
-                                                            <XCircle className="h-3 w-3" />
-                                                            Remove from Portal
+                                                            <XCircle className="h-3 w-3" /> Remove
                                                         </Button>
-                                                    )}
-                                                </div>
-                                            </TableCell>
+                                                    </div>
+                                                </TableCell>
+                                            )}
                                         </TableRow>
                                     );
                                 })
@@ -431,10 +438,9 @@ export default function OfficialDashboard() {
                     </Table>
                 </div>
 
-                {/* Row count summary */}
                 {filteredData.length > 0 && (
                     <p className="text-xs text-muted-foreground text-right">
-                        Showing {filteredData.length} paid application{filteredData.length !== 1 ? "s" : ""}
+                        Showing {filteredData.length} application{filteredData.length !== 1 ? "s" : ""}
                         {selectedIds.size > 0 && ` · ${selectedIds.size} selected`}
                     </p>
                 )}
@@ -442,42 +448,32 @@ export default function OfficialDashboard() {
 
             <FilterSheet open={isFilterSheetOpen} onOpenChange={setIsFilterSheetOpen} />
 
-            {/* Application View / Edit Sheet */}
             <ApplicationViewSheet
                 app={viewingApp}
                 open={!!viewingApp}
                 onOpenChange={(v) => { if (!v) setViewingApp(null); }}
             />
 
-            {/* Single — Move for Scrutiny */}
-            <AlertDialog open={!!confirmForward} onOpenChange={() => setConfirmForward(null)}>
+            {/* Single — Forward */}
+            <AlertDialog open={!!confirmForwardId} onOpenChange={() => setConfirmForwardId(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Move for Scrutiny?</AlertDialogTitle>
+                        <AlertDialogTitle>Forward Application?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This will advance the application to the next officer tier. It will disappear from your inbox.
-                            {confirmForward && (() => {
-                                const app = applications.find((a) => a.id === confirmForward);
-                                const next = app ? NEXT_STAGE[app.workflow_stage] : null;
-                                return next ? (
-                                    <span className="block mt-2 font-semibold text-foreground">
-                                        New stage: {STAGE_LABELS[next]}
-                                    </span>
-                                ) : null;
-                            })()}
+                            This will advance the application to the next stage. It will disappear from your inbox.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => confirmForward && handleForward(confirmForward)}>
-                            Confirm — Move for Scrutiny
+                        <AlertDialogAction onClick={() => confirmForwardId && handleForward(confirmForwardId)}>
+                            Confirm — Forward
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
 
-            {/* Single — Remove from Portal */}
-            <AlertDialog open={!!confirmReject} onOpenChange={() => setConfirmReject(null)}>
+            {/* Single — Remove */}
+            <AlertDialog open={!!confirmRemoveId} onOpenChange={() => setConfirmRemoveId(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle className="text-destructive">Remove from Portal?</AlertDialogTitle>
@@ -489,34 +485,32 @@ export default function OfficialDashboard() {
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                         <AlertDialogAction
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            onClick={() => confirmReject && handleReject(confirmReject)}
+                            onClick={() => confirmRemoveId && handleRemove(confirmRemoveId)}
                         >
-                            Confirm — Remove from Portal
+                            Confirm — Remove
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
 
-            {/* Bulk — Move for Scrutiny */}
+            {/* Bulk — Forward */}
             <AlertDialog open={confirmBulkForward} onOpenChange={setConfirmBulkForward}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Move {selectedIds.size} Applications for Scrutiny?</AlertDialogTitle>
+                        <AlertDialogTitle>Forward {selectedIds.size} Applications?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            All {selectedIds.size} selected applications will be advanced to the next officer tier simultaneously.
+                            All {selectedIds.size} selected applications will be advanced to the next stage.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleBulkForward}>
-                            Confirm — Move All for Scrutiny
-                        </AlertDialogAction>
+                        <AlertDialogAction onClick={handleBulkForward}>Confirm — Forward All</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
 
-            {/* Bulk — Remove from Portal */}
-            <AlertDialog open={confirmBulkReject} onOpenChange={setConfirmBulkReject}>
+            {/* Bulk — Remove */}
+            <AlertDialog open={confirmBulkRemove} onOpenChange={setConfirmBulkRemove}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle className="text-destructive">Remove {selectedIds.size} Applications?</AlertDialogTitle>
@@ -528,7 +522,7 @@ export default function OfficialDashboard() {
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                         <AlertDialogAction
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            onClick={handleBulkReject}
+                            onClick={handleBulkRemove}
                         >
                             Confirm — Remove All
                         </AlertDialogAction>
