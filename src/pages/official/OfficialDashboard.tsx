@@ -353,15 +353,15 @@ export default function OfficialDashboard() {
                                 <TableHead className="font-semibold">Qualification</TableHead>
                                 <TableHead className="font-semibold">Enrolment No.</TableHead>
                                 <TableHead className="font-semibold">Mode</TableHead>
-                                <TableHead className="font-semibold">Stage</TableHead>
                                 <TableHead className="font-semibold text-center">Details</TableHead>
+                                {currentTab?.key === "removed" && <TableHead className="font-semibold">Removed by</TableHead>}
                                 {isInboxTab && <TableHead className="font-semibold text-right">Quick Actions</TableHead>}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {filteredData.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={9} className="h-32 text-center">
+                                    <TableCell colSpan={currentTab?.key === "removed" ? 9 : 8} className="h-32 text-center">
                                         <div className="flex flex-col items-center gap-2 text-muted-foreground">
                                             <AlertTriangle className="h-8 w-8 text-muted-foreground/50" />
                                             <p className="font-medium">No applications in this tab</p>
@@ -373,6 +373,7 @@ export default function OfficialDashboard() {
                                 filteredData.map((app) => {
                                     const isSelected = selectedIds.has(app.id);
                                     const isReverted = wasReverted(app) && userStage === "Stage_1_Processing";
+                                    const removedBy = app.audit_trail.find(entry => entry.action === "Removed from Portal")?.actor || "Unknown";
                                     return (
                                         <TableRow
                                             key={app.id}
@@ -397,11 +398,6 @@ export default function OfficialDashboard() {
                                             <TableCell>
                                                 <Badge variant="outline" className="text-xs">{app.appMode}</Badge>
                                             </TableCell>
-                                            <TableCell>
-                                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${STAGE_COLORS[app.workflow_stage]}`}>
-                                                    {STAGE_LABELS[app.workflow_stage]}
-                                                </span>
-                                            </TableCell>
                                             <TableCell className="text-center">
                                                 <Button
                                                     size="sm" variant="outline"
@@ -411,6 +407,11 @@ export default function OfficialDashboard() {
                                                     View / Process
                                                 </Button>
                                             </TableCell>
+                                            {currentTab?.key === "removed" && (
+                                                <TableCell className="text-sm font-medium">
+                                                    {removedBy}
+                                                </TableCell>
+                                            )}
                                             {isInboxTab && (
                                                 <TableCell className="text-right">
                                                     <div className="flex items-center justify-end gap-2">
