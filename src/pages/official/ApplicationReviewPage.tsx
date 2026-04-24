@@ -16,6 +16,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
     Collapsible,
     CollapsibleContent,
@@ -91,11 +92,12 @@ interface ActionPanelProps {
     appNumber: string;
     currentStage: WorkflowStage;
     userStage: number | null; // 1–4 or null (Super Admin)
+    isVerified: boolean;
     onDone: () => void;
 }
 
-function ActionPanel({ appId, appNumber, currentStage, userStage, onDone }: ActionPanelProps) {
-    const { activeUser, forwardApplication, allotRegNumberAndForward, revertApplication, raiseQuery, removeFromPortal, finalApprove } = useAuthStore();
+function ActionPanel({ appId, appNumber, currentStage, userStage, isVerified, onDone }: ActionPanelProps) {
+    const { activeUser, forwardApplication, allotRegNumberAndForward, revertApplication, raiseQuery, removeFromPortal, finalApprove, setApplicationVerified } = useAuthStore();
     const actorName = activeUser.fullName;
 
     const [selectedAction, setSelectedAction] = useState<ActionType | null>(null);
@@ -188,10 +190,33 @@ function ActionPanel({ appId, appNumber, currentStage, userStage, onDone }: Acti
                 </p>
             </CardHeader>
             <CardContent className="pt-4 space-y-2">
+                {/* ── Verification Checkbox ───────────────────────── */}
+                {!["Approved", "Rejected", "Query_Raised"].includes(currentStage) && (
+                    <div className="flex items-center gap-2 mb-4 p-3 rounded-md border bg-primary/5 border-primary/20">
+                        <Checkbox 
+                            id="verify-app" 
+                            checked={isVerified} 
+                            onCheckedChange={(c) => {
+                                setApplicationVerified(appId, !!c);
+                                if (!c && (selectedAction === "forward" || selectedAction === "allotAndForward" || selectedAction === "finalApprove")) {
+                                    setSelectedAction(null);
+                                }
+                            }} 
+                        />
+                        <label 
+                            htmlFor="verify-app" 
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer select-none"
+                        >
+                            {currentStage === "Stage_2_Scrutiny" ? "Scrutiny Done" : "Application Verified"}
+                        </label>
+                    </div>
+                )}
+
                 {/* ── Stage 1: Clerk ──────────────────────────────── */}
                 {(userStage === 1 || userStage === null) && currentStage === "Stage_1_Processing" && (
                     <>
-                        <ActionBtn action="forward" label="Forward Application (→ Stage 2: Scrutiny)" icon={ArrowRight} colorClass="text-blue-700" />
+                        {isVerified && <ActionBtn action="forward" label="Forward Application (→ Stage 2: Scrutiny)" icon={ArrowRight} colorClass="text-blue-700" />}
+                        <ActionBtn action="raiseQuery" label="Send Back to Applicant (Query Raised)" icon={MessageSquareWarning} colorClass="text-amber-700" />
                         <ActionBtn action="remove" label="Remove Application from Portal" icon={XCircle} colorClass="text-destructive" />
                     </>
                 )}
@@ -199,7 +224,7 @@ function ActionPanel({ appId, appNumber, currentStage, userStage, onDone }: Acti
                 {/* ── Stage 2: HOD ────────────────────────────────── */}
                 {(userStage === 2 || userStage === null) && currentStage === "Stage_2_Scrutiny" && (
                     <>
-                        <ActionBtn action="forward" label="Forward Application (→ Stage 3: Reg. Number)" icon={ArrowRight} colorClass="text-blue-700" />
+                        {isVerified && <ActionBtn action="forward" label="Forward Application (→ Stage 3: Reg. Number)" icon={ArrowRight} colorClass="text-blue-700" />}
                         <ActionBtn action="raiseQuery" label="Send Back to Applicant (Query Raised)" icon={MessageSquareWarning} colorClass="text-amber-700" />
                         <ActionBtn action="revertS1" label="Revert to Stage 1 — Application Processing" icon={RotateCcw} colorClass="text-orange-700" />
                         <ActionBtn action="remove" label="Remove Application from Portal" icon={XCircle} colorClass="text-destructive" />
@@ -209,7 +234,7 @@ function ActionPanel({ appId, appNumber, currentStage, userStage, onDone }: Acti
                 {/* ── Stage 3: Registrar ──────────────────────────── */}
                 {(userStage === 3 || userStage === null) && currentStage === "Stage_3_RegNo" && (
                     <>
-                        <ActionBtn action="allotAndForward" label="Allot Reg. Number & Forward (→ Stage 4: Certificate)" icon={ArrowRight} colorClass="text-blue-700" />
+                        {isVerified && <ActionBtn action="allotAndForward" label="Allot Reg. Number & Forward (→ Stage 4: Certificate)" icon={ArrowRight} colorClass="text-blue-700" />}
                         <ActionBtn action="revertS2" label="Revert to Stage 2 — Under Scrutiny" icon={RotateCcw} colorClass="text-orange-700" />
                         <ActionBtn action="remove" label="Remove Application from Portal" icon={XCircle} colorClass="text-destructive" />
                     </>
@@ -218,7 +243,7 @@ function ActionPanel({ appId, appNumber, currentStage, userStage, onDone }: Acti
                 {/* ── Stage 4: President ──────────────────────────── */}
                 {(userStage === 4 || userStage === null) && currentStage === "Stage_4_Certificate" && (
                     <>
-                        <ActionBtn action="finalApprove" label="Proceed — Final Approval & Issue Certificate" icon={Award} colorClass="text-emerald-700" />
+                        {isVerified && <ActionBtn action="finalApprove" label="Proceed — Final Approval & Issue Certificate" icon={Award} colorClass="text-emerald-700" />}
                         <ActionBtn action="revertS3" label="Revert to Stage 3 — Generate Reg. Number" icon={RotateCcw} colorClass="text-orange-700" />
                         <ActionBtn action="remove" label="Remove Application from Portal" icon={XCircle} colorClass="text-destructive" />
                     </>
@@ -385,6 +410,7 @@ export default function ApplicationReviewPage() {
                         appNumber={app.appNumber}
                         currentStage={app.workflow_stage}
                         userStage={userStageNum}
+                        isVerified={!!app.isVerified}
                         onDone={handleDone}
                     />
                 </div>

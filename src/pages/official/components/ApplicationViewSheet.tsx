@@ -209,17 +209,30 @@ export function ApplicationReadView({ app }: { app: ApplicationRecord }) {
         <div className="flex-1 w-full relative">
             <div className="px-1 py-4 pb-12">
 
-                {/* ── Application meta strip ── */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 rounded-xl border bg-muted/30 p-3 mb-4">
-                    <InfoCell label="App No." value={`#${app.appNumber}`} icon={Hash} highlight />
-                    <InfoCell label="Mode" value={app.appMode} />
-                    <InfoCell label="Applied On" value={app.dateOfApp} icon={Calendar} />
-                    <InfoCell label="Hardcopy Received" value={app.hardcopyReceivedOn ?? "Not Received"} />
-                    <InfoCell label="Payment Status" value={app.paymentStatus} />
-                    {app.enrolmentNumber && <InfoCell label="Enrolment No." value={app.enrolmentNumber} icon={Hash} highlight />}
-                    {app.regNumber && <InfoCell label="Reg. Number" value={app.regNumber} icon={CreditCard} highlight />}
-                    {app.regDate && <InfoCell label="Reg. Date" value={app.regDate} icon={Calendar} />}
-                    {app.presidentApproveOn && <InfoCell label="President Approved" value={app.presidentApproveOn} icon={CheckCircle2} />}
+                {/* ── Application meta strip & Photo ── */}
+                <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                    {/* Photo & Signature Box */}
+                    <div className="flex flex-col items-center justify-center gap-2 flex-shrink-0 w-full sm:w-[130px] bg-muted/20 p-2 rounded-xl border border-border/50">
+                        <div className="w-24 h-28 bg-background border border-border rounded-md overflow-hidden flex items-center justify-center shadow-sm">
+                            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest">Photo</span>
+                        </div>
+                        <div className="w-24 h-10 bg-background border border-border rounded-md overflow-hidden flex items-center justify-center shadow-sm">
+                            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest">Sign</span>
+                        </div>
+                    </div>
+                    
+                    {/* Meta Info Grid */}
+                    <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 rounded-xl border bg-muted/30 p-3">
+                        <InfoCell label="App No." value={`#${app.appNumber}`} icon={Hash} highlight />
+                        <InfoCell label="Mode" value={app.appMode} />
+                        <InfoCell label="Applied On" value={app.dateOfApp} icon={Calendar} />
+                        <InfoCell label="Hardcopy Received" value={app.hardcopyReceivedOn ?? "Not Received"} />
+                        <InfoCell label="Payment Status" value={app.paymentStatus} />
+                        {app.enrolmentNumber && <InfoCell label="Enrolment No." value={app.enrolmentNumber} icon={Hash} highlight />}
+                        {app.regNumber && <InfoCell label="Reg. Number" value={app.regNumber} icon={CreditCard} highlight />}
+                        {app.regDate && <InfoCell label="Reg. Date" value={app.regDate} icon={Calendar} />}
+                        {app.presidentApproveOn && <InfoCell label="President Approved" value={app.presidentApproveOn} icon={CheckCircle2} />}
+                    </div>
                 </div>
 
                 {/* ════════════════════════════════════════════
@@ -375,13 +388,25 @@ export function ApplicationReadView({ app }: { app: ApplicationRecord }) {
                                     }`}
                             >
                                 <p className="text-xs font-medium text-foreground">{doc.label}</p>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${isUploaded ? "bg-emerald-100 text-emerald-700"
-                                    : isPending ? "bg-amber-100 text-amber-700"
-                                        : isNA ? "bg-muted text-muted-foreground"
-                                            : "bg-muted text-muted-foreground"
-                                    }`}>
-                                    {doc.status}
-                                </span>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                    {isUploaded && (
+                                        <Button 
+                                            size="sm" 
+                                            variant="outline" 
+                                            className="h-6 px-2 text-[10px] bg-background hover:bg-muted"
+                                            onClick={() => toast.info(`Viewing document: ${doc.label}`)}
+                                        >
+                                            View
+                                        </Button>
+                                    )}
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${isUploaded ? "bg-emerald-100 text-emerald-700"
+                                        : isPending ? "bg-amber-100 text-amber-700"
+                                            : isNA ? "bg-muted text-muted-foreground"
+                                                : "bg-muted text-muted-foreground"
+                                        }`}>
+                                        {doc.status}
+                                    </span>
+                                </div>
                             </div>
                         );
                     })}

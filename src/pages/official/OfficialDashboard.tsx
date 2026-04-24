@@ -354,14 +354,16 @@ export default function OfficialDashboard() {
                                 <TableHead className="font-semibold">Enrolment No.</TableHead>
                                 <TableHead className="font-semibold">Mode</TableHead>
                                 <TableHead className="font-semibold text-center">Details</TableHead>
+                                {userStageNum === 4 && <TableHead className="font-semibold">Registration</TableHead>}
                                 {currentTab?.key === "removed" && <TableHead className="font-semibold">Removed by</TableHead>}
+                                {(currentTab?.key === "review" || currentTab?.key === "query" || currentTab?.key === "removed") && <TableHead className="font-semibold">Remark</TableHead>}
                                 {isInboxTab && <TableHead className="font-semibold text-right">Quick Actions</TableHead>}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {filteredData.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={currentTab?.key === "removed" ? 9 : 8} className="h-32 text-center">
+                                    <TableCell colSpan={7 + (userStageNum === 4 ? 1 : 0) + (currentTab?.key === "removed" ? 1 : 0) + ((currentTab?.key === "review" || currentTab?.key === "query" || currentTab?.key === "removed") ? 1 : 0) + (isInboxTab ? 1 : 0)} className="h-32 text-center">
                                         <div className="flex flex-col items-center gap-2 text-muted-foreground">
                                             <AlertTriangle className="h-8 w-8 text-muted-foreground/50" />
                                             <p className="font-medium">No applications in this tab</p>
@@ -374,6 +376,18 @@ export default function OfficialDashboard() {
                                     const isSelected = selectedIds.has(app.id);
                                     const isReverted = wasReverted(app) && userStage === "Stage_1_Processing";
                                     const removedBy = app.audit_trail.find(entry => entry.action === "Removed from Portal")?.actor || "Unknown";
+                                    
+                                    let displayRemark = "—";
+                                    if (currentTab?.key === "removed") {
+                                        displayRemark = [...app.audit_trail].reverse().find(entry => entry.action === "Removed from Portal")?.remarks || "—";
+                                    } else if (currentTab?.key === "query") {
+                                        displayRemark = [...app.audit_trail].reverse().find(entry => entry.action === "Query Raised to Applicant")?.remarks || "—";
+                                    } else if (currentTab?.key === "review") {
+                                        displayRemark = [...app.audit_trail].reverse().find(entry => entry.action.startsWith("Reverted"))?.remarks || "—";
+                                    }
+
+                                    const showRemarkCol = currentTab?.key === "review" || currentTab?.key === "query" || currentTab?.key === "removed";
+
                                     return (
                                         <TableRow
                                             key={app.id}
@@ -407,20 +421,32 @@ export default function OfficialDashboard() {
                                                     View / Process
                                                 </Button>
                                             </TableCell>
+                                            {userStageNum === 4 && (
+                                                <TableCell className="text-xs font-medium">
+                                                    {app.regNumber || `CA/${new Date().getFullYear()}/${app.appNumber.padStart(5, "0")}`}
+                                                </TableCell>
+                                            )}
                                             {currentTab?.key === "removed" && (
                                                 <TableCell className="text-sm font-medium">
                                                     {removedBy}
                                                 </TableCell>
                                             )}
+                                            {showRemarkCol && (
+                                                <TableCell className="text-xs max-w-[200px] truncate" title={displayRemark}>
+                                                    {displayRemark}
+                                                </TableCell>
+                                            )}
                                             {isInboxTab && (
                                                 <TableCell className="text-right">
                                                     <div className="flex items-center justify-end gap-2">
-                                                        <Button
-                                                            size="sm" className="h-7 text-xs gap-1"
-                                                            onClick={() => setConfirmForwardId(app.id)}
-                                                        >
-                                                            Forward <ArrowRight className="h-3 w-3" />
-                                                        </Button>
+                                                        {app.isVerified && (
+                                                            <Button
+                                                                size="sm" className="h-7 text-xs gap-1"
+                                                                onClick={() => setConfirmForwardId(app.id)}
+                                                            >
+                                                                {userStageNum === 4 ? "Approve" : "Forward"} <ArrowRight className="h-3 w-3" />
+                                                            </Button>
+                                                        )}
                                                         <Button
                                                             size="sm" variant="outline"
                                                             className="h-7 text-xs gap-1 text-destructive border-destructive/30 hover:bg-destructive/10"

@@ -78,6 +78,7 @@ export interface ApplicationRecord {
     enrolmentNumber: string | null;
     workflow_stage: WorkflowStage;
     audit_trail: AuditTrailEntry[];
+    isVerified?: boolean;
 }
 
 // ── Hardcoded Super Admin ─────────────────────────────────────────────────────
@@ -450,6 +451,8 @@ interface AuthState {
     removeFromPortal: (appId: string, actorName: string, remarks?: string) => void;
     /** Final approval by Stage 4 */
     finalApprove: (appId: string, actorName: string) => void;
+    /** Toggle verification status of an application */
+    setApplicationVerified: (appId: string, verified: boolean) => void;
 }
 
 // ── Store implementation ──────────────────────────────────────────────────────
@@ -576,5 +579,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                     audit_trail: [...app.audit_trail, entry],
                 };
             }),
+        })),
+    setApplicationVerified: (appId, verified) =>
+        set((state) => ({
+            applications: state.applications.map((app) =>
+                app.id === appId ? { ...app, isVerified: verified } : app
+            ),
         })),
 }));
